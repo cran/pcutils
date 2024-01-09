@@ -4,14 +4,16 @@
 \alias{read.file}
 \title{Read some special format file}
 \usage{
-read.file(file, format = NULL, just_print = FALSE)
+read.file(file, format = NULL, just_print = FALSE, all_yes = FALSE)
 }
 \arguments{
 \item{file}{file path}
 
-\item{format}{"blast","diamond"}
+\item{format}{"blast", "diamond", "fa", "fasta", "fna", "gff", "gtf","jpg", "png", "pdf", "svg"...}
 
 \item{just_print}{just print the file}
+
+\item{all_yes}{all_yes?}
 }
 \value{
 data.frame

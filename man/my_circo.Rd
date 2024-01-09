@@ -8,7 +8,7 @@ my_circo(
   df,
   reorder = TRUE,
   pal = NULL,
-  mode = c("circlize", "chorddiag"),
+  mode = c("circlize", "chorddiag")[1],
   ...
 )
 }
@@ -17,7 +17,7 @@ my_circo(
 
 \item{reorder}{reorder by number?}
 
-\item{pal}{a vector of colors, you can get from here too.{RColorBrewer::brewer.pal(5,"Set2")} {ggsci::pal_aaas()(5)}}
+\item{pal}{a vector of colors, you can get from here too: \code{RColorBrewer::brewer.pal(5,"Set2")} or \code{ggsci::pal_aaas()(5)}}
 
 \item{mode}{"circlize","chorddiag"}
 
@@ -31,6 +31,13 @@ My circo plot
 }
 \examples{
 \donttest{
-data.frame(a=c("a","a","b","b","c"),b=c("a",LETTERS[2:5]),c=1:5)\%>\%my_circo(mode="circlize")
+data.frame(
+    a = c("a", "a", "b", "b", "c"),
+    b = c("a", LETTERS[2:5]), c = 1:5
+) \%>\% my_circo(mode = "circlize")
+data(otutab)
+cbind(taxonomy, num = rowSums(otutab))[1:10, c(2, 6, 8)] -> test
+my_circo(test)
 }
+
 }
