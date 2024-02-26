@@ -4,7 +4,7 @@ common_list <- list(
 
 print_authors_affiliation <- function(authors = c("jc", "pc")) {
     affiliations <- c(
-        "1" = "Zhejiang Provincial Key Laboratory of Cancer Molecular Cell Biology, Life Sciences Institute, Zhejiang University, Hangzhou, Zhejiang 310058, China",
+        "1" = "MOE Key Laboratory of Biosystems Homeostasis & Protection, and Zhejiang Provincial Key Laboratory of Cancer Molecular Cell Biology, Life Sciences Institute, Zhejiang University, Hangzhou, Zhejiang 310030, China",
         "2" = "State Key Laboratory for Diagnosis and Treatment of Infectious Diseases, National Clinical Research Center for Infectious Diseases, First Affiliated Hospital, Zhejiang University School of Medicine, Hangzhou, Zhejiang 310009, China",
         "3" = "Center for Life Sciences, Shaoxing Institute, Zhejiang University, Shaoxing, Zhejiang 321000, China",
         "4" = "BGI Research, Wuhan, Hubei 430074, China",
@@ -13,12 +13,12 @@ print_authors_affiliation <- function(authors = c("jc", "pc")) {
     )
     author_list <- list(
         jc = 1:3,
-        pc = 1:3,
-        lye = 1:3,
-        lz = 1:3,
-        jlyq = 1:3,
-        hzn = 1:3,
-        cq = 1:3,
+        pc = 1:2,
+        lye = 1:2,
+        lz = 1:2,
+        jlyq = 1:2,
+        hzn = 1:2,
+        cq = 1:2,
         tsj = 4:5,
         sxt = 6
     )
@@ -48,7 +48,7 @@ print_authors_affiliation <- function(authors = c("jc", "pc")) {
 dabiao <- function(str = "", ..., n = 80, char = "=", mode = c("middle", "left", "right"), print = FALSE) {
     str <- paste0(c(str, ...), collapse = "")
     mode <- match.arg(mode, c("middle", "left", "right"))
-    if (n < nchar(str)) n <- nchar(str) + 2
+    if (n < nchar(str)) n <- nchar(str)
     x <- (n - nchar(str)) %/% 2
     x2 <- n - nchar(str) - x
     switch(mode,
@@ -124,20 +124,23 @@ change_fac_lev <- function(x, levels = NULL, last = FALSE) {
 }
 
 #' Replace a vector by named vector
+#'
 #' @param x a vector need to be replaced
 #' @param y named vector
 #' @param fac consider the factor?
+#' @param keep_origin keep_origin?
 #'
 #' @return vector
 #' @export
 #' @examples
-#' tidai(c("a", "a", "b"), c("a" = "red", b = "blue"))
+#' tidai(c("a", "a", "b", "d"), c("a" = "red", b = "blue"))
 #' tidai(c("a", "a", "b", "c"), c("red", "blue"))
-tidai <- function(x, y, fac = FALSE) {
+#' tidai(c("A" = "a", "B" = "b"), c("a" = "red", b = "blue"))
+#' tidai(factor(c("A" = "a", "B" = "b", "C" = "c")), c("a" = "red", b = "blue", c = "green"))
+tidai <- function(x, y, fac = FALSE, keep_origin = FALSE) {
     if (is.null(y)) {
         return(x)
     }
-    x <- as.character(x)
     tmp <- y
     if (is.null(names(tmp))) {
         tmp <- rep(unique(tmp), len = length(unique(x)))
@@ -147,10 +150,14 @@ tidai <- function(x, y, fac = FALSE) {
             names(tmp) <- unique(x)
         }
     }
-    if (is.null(names(x))) {
-        return(unname(tmp[x]))
+    if (keep_origin) {
+        add <- setdiff(x, names(tmp))
+        tmp <- c(tmp, setNames(add, add))
     }
-    return(setNames(unname(tmp[x]), names(x)))
+    if (is.null(names(x))) {
+        return(unname(tmp[as.character(x)]))
+    }
+    return(setNames(unname(tmp[as.character(x)]), names(x)))
 }
 
 #' Update the parameters
@@ -212,24 +219,24 @@ lib_ps <- function(p_list, ..., all_yes = FALSE, library = TRUE) {
         "sankeyD3" = "fbreitwieser/sankeyD3",
         "pctax" = "Asa12138/pctax",
         "MetaNet" = "Asa12138/MetaNet",
+        "plot4fun" = "Asa12138/plot4fun",
+        "iCRISPR" = "Asa12138/iCRISPR",
         "ReporterScore" = "Asa12138/ReporterScore",
         "ggcor" = "Github-Yilei/ggcor",
         "chorddiag" = "mattflor/chorddiag",
-        "inborutils" = "inbo/inborutils",
         "ggradar" = "ricardo-bion/ggradar",
         "pairwiseAdonis" = "pmartinezarbizu/pairwiseAdonis/pairwiseAdonis",
-        "Vennerable" = "js229/Vennerable",
         "linkET" = "Hy4m/linkET",
-        "deeplr" = "paulcbauer/deeplr",
         "ggchicklet" = "hrbrmstr/ggchicklet",
-        "ggkegg" = "noriakis/ggkegg"
+        "ggkegg" = "noriakis/ggkegg",
+        "SpiecEasi" = "zdk123/SpiecEasi"
     )
 
     p_list <- c(p_list, ...)
     for (p in p_list) {
         if (!requireNamespace(p, quietly = TRUE)) {
             if (!all_yes) {
-                message(paste0(p, ": this package haven't install, should install?"))
+                message(paste0(p, ": this package has not been installed yet, should it be installed?"))
                 flag <- readline("yes/no(y/n)?")
             } else {
                 flag <- "y"
@@ -237,30 +244,32 @@ lib_ps <- function(p_list, ..., all_yes = FALSE, library = TRUE) {
 
             if (tolower(flag) %in% c("yes", "y")) {
                 if (p %in% names(some_packages)) {
-                    remotes::install_github(some_packages[p])
+                    if (!requireNamespace("devtools", quietly = TRUE)) utils::install.packages("devtools")
+                    message("Install the ", p, "from github: ", some_packages[p])
+                    devtools::install_github(some_packages[p])
                 } else {
                     utils::install.packages(p)
                 }
             } else {
-                stop(paste0("exit, because '", p, "' need to install"))
+                stop(paste0("exit, because '", p, "' needs to be installed"))
             }
 
             if (!requireNamespace(p, quietly = TRUE)) {
                 if (!all_yes) {
-                    message(paste0(p, " is not available in CRAN, try Bioconductor?"))
+                    message(paste0(p, " is not available at CRAN, try Bioconductor?"))
                     flag <- readline("yes/no(y/n)?")
                 }
 
                 if (tolower(flag) %in% c("yes", "y")) {
                     if (!requireNamespace("BiocManager", quietly = TRUE)) utils::install.packages("BiocManager")
-                    BiocManager::install(p)
+                    BiocManager::install(p, update = FALSE)
                 } else {
-                    stop(paste0("exit, because '", p, "' need to install"))
+                    stop(paste0("exit, because '", p, "' needs to be installed"))
                 }
             }
 
             if (!requireNamespace(p, quietly = TRUE)) {
-                stop("\nplease try other way (github...) to install ", p)
+                stop("\nplease try other way (e.g. github...) to install ", p)
             }
         }
 
@@ -363,7 +372,7 @@ grepl.data.frame <- function(pattern, x, ...) {
 #' @param pattern search pattern
 #' @param replacement a replacement for matched pattern
 #' @param x your data.frame
-#' @param ... addtitional arguments for gerpl()
+#' @param ... additional arguments for gerpl()
 #'
 #' @return a logical data.frame
 #' @export
@@ -390,12 +399,14 @@ gsub.data.frame <- function(pattern, replacement, x, ...) {
 #' @param format "blast", "diamond", "fa", "fasta", "fna", "gff", "gtf","jpg", "png", "pdf", "svg"...
 #' @param just_print just print the file
 #' @param all_yes all_yes?
+#' @param ... additional arguments
+#' @param density the resolution for reading pdf or svg
 #'
 #' @return data.frame
 #' @export
 #'
-read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE) {
-    if ((file.size(file) > 10000) & !all_yes) {
+read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, density = 120, ...) {
+    if ((file.size(file) > 1e6) & !all_yes) {
         message(paste0(file, ": this file is a little big, still open?"))
         flag <- readline("yes/no(y/n)?")
         if (!tolower(flag) %in% c("yes", "y")) {
@@ -403,12 +414,17 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE) 
         }
     }
     if (just_print) {
+        lib_ps("readr", library = FALSE)
         cat(readr::read_file(file))
     } else {
+        oldpar <- graphics::par(no.readonly = TRUE)
+        on.exit(graphics::par(oldpar))
+        graphics::par(mar = rep(0, 4))
+
         if (is.null(format)) format <- tools::file_ext(file)
         format <- match.arg(format, c(
             "blast", "diamond", "fa", "fasta", "fna", "gff", "gtf",
-            "jpg", "png", "pdf", "svg", "biom"
+            "jpg", "png", "pdf", "svg", "gif", "biom"
         ))
 
         if (format %in% c("gff", "gtf")) {
@@ -435,46 +451,31 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE) 
             return(df)
         }
 
-        # if (format %in% c("biom")) {
-        #     if (file.size(file) > 10000) {
-        #         message(paste0(file, ": this biom file is a little big: ", file.size(file), " still open? (as 10Mb biom will be a about 3Gb data.frame!)"))
-        #         flag <- readline("yes/no(y/n)?")
-        #         if (tolower(flag) %in% c("yes", "y")) {
-        #             lib_ps("biomformat", library = FALSE)
-        #             dat.b <- biomformat::read_biom(file)
-        #             df <- data.frame(data.matrix(biomformat::biom_data(dat.b)), check.names = FALSE)
-        #         } else {
-        #             return(NULL)
-        #         }
-        #     }
-        #     return(df)
-        # }
-
-        if (format %in% c("jpg", "png")) {
-            lib_ps("jpeg", "png", "grid", library = FALSE)
-            switch(format,
-                "jpg" = {
-                    p1 <- jpeg::readJPEG(file)
-                },
-                "png" = {
-                    p1 <- png::readPNG(file)
+        if (format %in% c("biom")) {
+            if (file.size(file) > 10000) {
+                message(paste0(file, ": this biom file is a little big: ", file.size(file), " still open? (as 10Mb biom will be a about 3Gb data.frame!)"))
+                flag <- readline("yes/no(y/n)?")
+                if (tolower(flag) %in% c("yes", "y")) {
+                    lib_ps("biomformat", library = FALSE)
+                    dat.b <- biomformat::read_biom(file)
+                    df <- data.frame(data.matrix(biomformat::biom_data(dat.b)), check.names = FALSE)
+                } else {
+                    return(NULL)
                 }
-            )
-            g <- grid::rasterGrob(p1, interpolate = TRUE)
-            p <- ggplot2::ggplot() +
-                ggplot2::annotation_custom(g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
-                ggplot2::theme_void()
-            return(p)
-            # graphics::plot(1:2, type = "n", axes = FALSE, ylab = "n", xlab = "n", ann = FALSE)
-            # graphics::rasterImage(p1, 1, 1, 2, 2)
+            }
+            return(df)
         }
-        if (format == "svg") {
-            lib_ps("grImport2", "ggpubr", library = FALSE)
-            x <- grImport2::readPicture(file)
-            g <- grImport2::pictureGrob(x)
-            p <- ggpubr::as_ggplot(g)
-            p
-            return(p)
+
+        if (format %in% c("jpg", "png", "svg", "pdf")) {
+            lib_ps("magick", library = FALSE)
+            image <- magick::image_read(file, density = density, ...)
+            if (length(image) > 1) message("Your file has more than one page! Print the first one page.")
+            plot(image[1])
+        }
+        if (format %in% c("gif")) {
+            lib_ps("magick", library = FALSE)
+            image <- magick::image_read(file, ...)
+            print(image)
         }
     }
 }
@@ -568,7 +569,10 @@ trans_format <- function(file, to_format, format = NULL, ..., brower = "/Applica
     out <- paste0(name, ".", to_format)
 
     if (to_format == "jpeg") to_format <- "jpg"
-    if (format == to_format) stop("don not need transfer")
+    if (format == to_format) {
+        message("do not need transfer")
+        return(invisible())
+    }
 
     lib_ps("ggplot2", library = FALSE)
     if (format == "svg") {
@@ -583,35 +587,9 @@ trans_format <- function(file, to_format, format = NULL, ..., brower = "/Applica
             invisible(g)
         }
     }
-    if (format == "pdf") {
-        lib_ps("pdftools", library = FALSE)
-        switch(to_format,
-            "png" = {
-                pdftools::pdf_convert(file, "png", filenames = out)
-            },
-            "jpg" = {
-                pdftools::pdf_convert(file, "jpeg", filenames = out)
-            },
-            "jpeg" = {
-                pdftools::pdf_convert(file, "jpeg", filenames = out)
-            }
-        )
-    }
-    # https://phantomjs.org/download.html
-    # PhantomJS
-    if (format == "png") {
-        lib_ps("png", "grid", library = FALSE)
-        img <- png::readPNG(file)
-        g <- grid::rasterGrob(img, interpolate = TRUE)
-        p <- ggplot2::ggplot() +
-            ggplot2::annotation_custom(g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
-            ggplot2::theme_void()
-        ggplot2::ggsave(p, filename = out, device = to_format, ...)
-        invisible(g)
-    }
-    if (format == "jpg") {
-        lib_ps("jpg", "grid", library = FALSE)
-        img <- jpeg::readJPEG(file)
+    if (format %in% c("pdf", "png", "jpg")) {
+        lib_ps("magick", "grid", library = FALSE)
+        img <- magick::image_read(file, density = 200, ...)
         g <- grid::rasterGrob(img, interpolate = TRUE)
         p <- ggplot2::ggplot() +
             ggplot2::annotation_custom(g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
@@ -647,11 +625,11 @@ trans_format <- function(file, to_format, format = NULL, ..., brower = "/Applica
 #' @param url The URL from which to download the file.
 #' @param timeout timeout, 300s
 #' @param force FALSE, if TRUE, overwrite existed file
+#' @param ... add
 #'
-#' @return NULL
+#' @return No value
 #' @export
-#'
-download2 <- function(url, file_path, timeout = 300, force = FALSE) {
+download2 <- function(url, file_path, timeout = 300, force = FALSE, ...) {
     if (file.exists(file_path) & !force) {
         return(invisible())
     } else {
@@ -663,7 +641,7 @@ download2 <- function(url, file_path, timeout = 300, force = FALSE) {
         # Download the file
         tryCatch(
             expr = {
-                utils::download.file(url, destfile = file_path)
+                utils::download.file(url, destfile = file_path, ...)
             },
             error = function(e) {
                 stop("Try downloading yourself from ", url)
@@ -740,33 +718,145 @@ search_browse <- function(search_terms, engine = "google", base_url = NULL) {
     }
 }
 
-#' translator
+#' Translator
+#'
+#' language: en, zh, jp, fra, th..., see \code{https://www.cnblogs.com/pieguan/p/10338255.html}
 #'
 #' @param words words
-#' @param mode "e2z","z2e"
+#' @param from source language, default "en"
+#' @param to target language, default "zh"
+#' @param split split to blocks when your words are too much
+#' @param verbose verbose
 #'
 #' @export
 #' @return vector
 #' @examples
 #' \dontrun{
-#' translator(c("love", "if"), mode = "e2z")
+#' translator(c("love", "if"), from = "en", to = "zh")
 #' }
-translator <- function(words, mode = "e2z") {
-    lib_ps("fanyi", library = FALSE)
-
+translator <- function(words, from = "en", to = "zh", split = TRUE, verbose = TRUE) {
     pcutils_config <- show_pcutils_config()
     if (is.null(pcutils_config$baidu_appid) | is.null(pcutils_config$baidu_key)) {
         message("Please set the baidu_appid and baidu_key using set_pcutils_config:")
         message("first, get the appid and key from baidu: https://zhuanlan.zhihu.com/p/375789804 ,")
         message("then, set_pcutils_config('baidu_appid',your_appid),")
         message("and set_pcutils_config('baidu_key',your_key).")
+        return(invisible())
     }
 
-    fanyi::set_translate_option(appid = pcutils_config$baidu_appid, key = pcutils_config$baidu_key)
+    if (identical(from, to)) {
+        to <- setdiff(c("en", "zh"), from)[1]
+        if (verbose) message("Same `from` and `to` language, change `to` to ", to)
+    }
+    words <- as.character(words)
+    words[words == ""] <- " "
+    orginal_words <- setNames(words, words)
+    idx <- grepl("^\\s+$", words)
 
-    if (mode == "e2z" | mode == 1) {
-        lapply(words, \(i)fanyi::translate(i, from = "en", to = "zh"))
+    if (sum(idx, na.rm = TRUE) > 0) {
+        if (verbose) message("Some of your words are invalid")
+        # words[idx]="NULL"
+        words <- words[!idx]
+    }
+    words <- unique(words)
+    if (length(words) == 0) {
+        return(orginal_words)
+    }
+
+    if (length(orginal_words) > 1) {
+        if (any(grepl("\n", words, fixed = TRUE))) {
+            if (verbose) message("'\\n' was found in your words, change to ';'.")
+        }
+        words <- gsub("\n", ";", words, fixed = TRUE)
     } else {
-        lapply(words, \(i)fanyi::translate(i, from = "zh", to = "en"))
+        words <- strsplit(words, "\n+")[[1]]
     }
+    input_words <- paste0(words, collapse = "\n")
+
+    if (split) {
+        split_words <- split_text(input_words, nchr_each = 5000)
+    } else {
+        split_words <- input_words
+    }
+
+    if (length(split_words) > 1) {
+        res_ls <- lapply(split_words, translator, from = from, to = to, split = FALSE, verbose = FALSE)
+        return(do.call(c, res_ls))
+    }
+
+    res <- baidu_translate(input_words, from = from, to = to)
+
+    if (length(res) == length(words)) {
+        names(res) <- words
+        res1 <- tidai(orginal_words, res, keep_origin = TRUE)
+    } else {
+        warning("Some thing wrong with your words, make the output length not equal to the input length")
+        res1 <- res
+    }
+    return(res1)
+}
+
+baidu_translate <- function(x, from = "en", to = "zh", pcutils_config = show_pcutils_config()) {
+    lib_ps("openssl", "httr", "jsonlite", library = FALSE)
+    water <- sample.int(4711, 1)
+    sign <- sprintf("%s%s%s%s", pcutils_config$baidu_appid, x, water, pcutils_config$baidu_key)
+    sign2 <- openssl::md5(sign)
+
+    .query <- list(
+        q = x, from = from, to = to,
+        appid = pcutils_config$baidu_appid,
+        salt = water, sign = sign2
+    )
+
+    url <- httr::modify_url("http://api.fanyi.baidu.com/api/trans/vip/translate",
+        query = .query
+    )
+    url <- url(url, encoding = "utf-8")
+    res <- jsonlite::fromJSON(url)
+
+    return(res$trans_result$dst)
+}
+
+#' Split text into parts, each not exceeding a specified character count
+#'
+#' @param text Original text
+#' @param nchr_each Maximum character count for each part
+#' @return List of divided parts
+#' @export
+#'
+#' @examples
+#' \donttest{
+#' original_text <- paste0(sample(c(letters, "\n"), 400, replace = TRUE), collapse = "")
+#' parts <- split_text(original_text, nchr_each = 200)
+#' lapply(parts, nchar)
+#' }
+split_text <- function(text, nchr_each = 200) {
+    # Split the text by newline characters
+    parts <- strsplit(text, "\n+")[[1]]
+
+    # Initialize the result list
+    result <- list()
+
+    # Loop through each part to ensure each does not exceed the specified character count
+    current_part <- parts[1]
+
+    for (part in parts[-1]) {
+        if (nchar(current_part) > nchr_each) message("Characters number of this paragraph is more than ", nchr_each)
+        if (nchar(current_part) + nchar(part) <= nchr_each) {
+            # If adding the current part to the new part does not exceed the specified character count,
+            # merge them into the current part
+            current_part <- paste(current_part, part, sep = "\n")
+        } else {
+            # If it exceeds the specified character count, add the current part to the result list
+            # and start a new part
+            result <- c(result, current_part)
+            current_part <- part
+        }
+    }
+
+    # Add the last part to the result list
+    result <- c(result, current_part)
+
+    # Return the result
+    return(result)
 }

@@ -4,7 +4,7 @@
 \alias{download2}
 \title{Download File}
 \usage{
-download2(url, file_path, timeout = 300, force = FALSE)
+download2(url, file_path, timeout = 300, force = FALSE, ...)
 }
 \arguments{
 \item{url}{The URL from which to download the file.}
@@ -14,6 +14,11 @@ download2(url, file_path, timeout = 300, force = FALSE)
 \item{timeout}{timeout, 300s}
 
 \item{force}{FALSE, if TRUE, overwrite existed file}
+
+\item{...}{add}
+}
+\value{
+No value
 }
 \description{
 This function downloads a file from the provided URL and saves it to the specified location.
