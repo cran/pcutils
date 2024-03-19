@@ -99,17 +99,19 @@ Plot a area plot
 data(otutab)
 stackplot(otutab, metadata, group = "Group")
 \donttest{
-stackplot(otutab, metadata,
+if (interactive()) {
+  stackplot(otutab, metadata,
     group = "Group", style = "sample",
     group_order = TRUE, flow = TRUE, relative = FALSE
-)
+  )
+}
 }
 data(otutab)
 areaplot(otutab, metadata, group = "Id")
 \donttest{
 areaplot(otutab, metadata,
-    group = "Group", style = "sample",
-    group_order = TRUE, relative = FALSE
+  group = "Group", style = "sample",
+  group_order = TRUE, relative = FALSE
 )
 }
 }
