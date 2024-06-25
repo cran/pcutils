@@ -1,7 +1,7 @@
 pcutils_theme <- {
   ggplot2::theme_classic(base_size = 13) +
     ggplot2::theme(
-      axis.text = element_text(color = "black"),
+      axis.text = ggplot2::element_text(color = "black"),
       plot.margin = grid::unit(rep(0.5, 4), "lines"),
       strip.background = ggplot2::element_rect(fill = NA)
     )
@@ -93,18 +93,19 @@ add_alpha <- function(color, alpha = 0.3) {
 #' @return No return value
 #' @export
 plotpdf <- function(plist, file, width = 8, height = 7, browser = "/Applications/Microsoft\ Edge.app/Contents/MacOS/Microsoft\ Edge", ...) {
+  if (!grepl("\\.pdf$", file)) file <- paste0(file, ".pdf")
   if (inherits(plist, "htmlwidget")) {
     lib_ps("pagedown", "htmlwidgets", library = FALSE)
     if (!file.exists(browser)) stop(browser, "is not found in your computer, please give a right path for Google Chrome, Microsoft Edge or Chromium.")
     suppressMessages(htmlwidgets::saveWidget(plist, "tmppp.html"))
-    pagedown::chrome_print("tmppp.html", paste0(file, ".pdf"),
+    pagedown::chrome_print("tmppp.html", file,
       wait = 0, browser = browser,
       options = list(pageRanges = "1", paperWidth = width, paperHeight = height, ...)
     )
     file.remove("tmppp.html")
-    message("pdf saved sucessfully in ", file, ".pdf")
+    message("pdf saved sucessfully in ", file)
   } else {
-    grDevices::pdf(paste0(file, ".pdf"), width, height, ...)
+    grDevices::pdf(file, width, height, ...)
     for (i in plist) {
       print(i)
     }
@@ -147,7 +148,8 @@ plotgif <- function(plist, file, speed = 1, ...) {
 #' Get n colors
 #'
 #' @param n how many colors you need
-#' @param pal col1~3; or a vector of colors, you can get from: `RColorBrewer::brewer.pal(5,"Set2")` or `ggsci::pal_aaas()(5)`
+#' @param pal "col1", "col2", "col3"; or a vector of colors, you can get from: `RColorBrewer::brewer.pal(5,"Set2")` or `ggsci::pal_aaas()(5)`
+#' @param n_break default: 5
 #'
 #' @return a vector of n colors
 #' @export
@@ -158,7 +160,24 @@ plotgif <- function(plist, file, speed = 1, ...) {
 #' \donttest{
 #' scales::show_col(get_cols(15, RColorBrewer::brewer.pal(5, "Set2")))
 #' }
-get_cols <- function(n = 11, pal = "col1") {
+get_cols <- function(n = 11, pal = NULL, n_break = 5) {
+  if (!(is.numeric(n) && length(n) == 1)) {
+    if (is.character(n) || is.factor(n) || is.logical(n)) {
+      n <- as.factor(n)
+      res <- setNames(get_cols(nlevels(n), pal = pal), levels(n))
+      return(res)
+    } else if (is.numeric(n)) {
+      if (is.null(pal)) pal <- "bluered"
+      res <- setNames(
+        pcutils::get_cols(n_break, pal = pal),
+        seq(min(n, na.rm = TRUE), max(n, na.rm = TRUE), length.out = n_break)
+      )
+      return(res)
+    }
+  }
+
+  n <- as.integer(n)
+
   col1 <- c(
     "#8dd3c7", "#F8CC00", "#bebada", "#fb8072", "#80b1d3",
     "#fdb462", "#b3de69", "#fccde5", "#d9d9d9", "#bc80bd",
@@ -177,7 +196,12 @@ get_cols <- function(n = 11, pal = "col1") {
 
   bluered <- rev(RColorBrewer::brewer.pal(11, "RdBu"))
 
-  if (length(pal) == 1) pal <- get(pal)
+  if (is.null(pal)) pal <- "col1"
+  if (length(pal) == 1) {
+    if (pal %in% c("col1", "col2", "col3", "bluered")) {
+      pal <- get(pal)
+    }
+  }
 
   if (length(pal) < n) {
     res <- grDevices::colorRampPalette(pal)(n)
@@ -207,7 +231,7 @@ pal_pc <- function(palette = c("col1", "col2", "col3", "bluered"), alpha = 1, n 
 scale_fill_pc <- function(palette = c("col1", "col2", "col3", "bluered"), alpha = 1, n = 11, ...) {
   palette <- match.arg(palette)
   discrete_scale(
-    "fill", "pc", pal_pc(palette, alpha, n = 11),
+    "fill", "pc", pal_pc(palette, alpha, n),
     ...
   )
 }
@@ -224,7 +248,7 @@ scale_fill_pc <- function(palette = c("col1", "col2", "col3", "bluered"), alpha 
 scale_color_pc <- function(palette = c("col1", "col2", "col3", "bluered"), alpha = 1, n = 11, ...) {
   palette <- match.arg(palette)
   discrete_scale(
-    "color", "pc", pal_pc(palette, alpha, n = 11),
+    "color", "pc", pal_pc(palette, alpha, n),
     ...
   )
 }
@@ -368,6 +392,17 @@ generate_labels <- function(labels = NULL, input = c(0, 0), nrows = NULL, ncols 
 }
 
 
+#' Match otutab and metadata
+#'
+#' @param otutab otutab, rownames are features, colnames are samples
+#' @param metadata metadata, rownames are samples
+#'
+#' @return list
+#' @export
+#'
+#' @examples
+#' data(otutab)
+#' match_df(otutab, metadata)
 match_df <- function(otutab, metadata) {
   if (!setequal(rownames(metadata), colnames(otutab))) message("rownames don't match in tab and metadata")
   idx <- rownames(metadata) %in% colnames(otutab)
@@ -775,12 +810,19 @@ pre_stack_data <- function(otutab, metadata = NULL, group = "Group",
       dplyr::arrange(value) %>% as.data.frame())[, 1] %>% as.character()
     data_all <- dplyr::mutate(data_all, variable = factor(variable, levels = new_lev))
   } else if (group_order[1] %in% data_all$Taxonomy) {
-    new_lev <- (data_all %>% dplyr::filter(Taxonomy == group_order) %>%
+    message("find `group_order` in the rownames(otutab), use the value of `group_order` to order the x axis.")
+    new_lev <- (data_all %>% dplyr::filter(Taxonomy == group_order[1]) %>%
       dplyr::arrange(value) %>% as.data.frame())[, 1] %>% as.character()
     data_all <- dplyr::mutate(data_all, variable = factor(variable, levels = new_lev))
   } else if (any(group_order %in% data_all$variable)) {
+    message("find `group_order` in metadata$group, use `group_order` to order the x axis.")
     # data_all <- dplyr::mutate(data_all, variable = change_fac_lev(variable, levels = group_order))
     data_all$variable <- change_fac_lev(data_all$variable, group_order)
+  } else if (identical(group_order, "cluster")) {
+    message("`group_order` is `cluster`, use hierarchical clustering to order the x axis.")
+    hc_dat <- reshape2::acast(data_all, variable ~ Taxonomy, value.var = "value")
+    hc <- stats::hclust(stats::dist(hc_dat))
+    data_all$variable <- factor(data_all$variable, levels = hc$labels[hc$order])
   }
   attributes(data_all)$pre_data <- TRUE
   return(data_all)
@@ -799,7 +841,7 @@ pre_stack_data <- function(otutab, metadata = NULL, group = "Group",
 #' @param relative transfer to relative or absolute
 #' @param legend_title fill legend_title
 #' @param stack_order the order of stack fill
-#' @param group_order the order of x group
+#' @param group_order the order of x group, can be T/F, or a vector of x, or a name, or "cluster"
 #' @param facet_order the order of the facet
 #' @param style "group" or "sample"
 #' @param flow should plot a flow plot?
@@ -1002,6 +1044,8 @@ areaplot <- function(otutab, metadata = NULL, group = "Group", get_data = FALSE,
   p + guides(fill = guide_legend(title = legend_title)) + xlab(group)
 }
 
+
+
 #' Plot a boxplot
 #'
 #'
@@ -1014,13 +1058,15 @@ areaplot <- function(otutab, metadata = NULL, group = "Group", get_data = FALSE,
 #' @param alpha whether plot a group alphabeta by test of method
 #' @param method test method:wilcox, tukeyHSD, LSD, (default: wilcox), see \code{\link{multitest}}
 #' @param alpha_param parameters parse to \code{\link[ggplot2]{geom_text}}
-#' @param point_param parameters parse to \code{\link[ggplot2]{geom_jitter}}
+#' @param point_param parameters parse to \code{\link[ggplot2]{geom_point}},
 #' @param p_value1 multi-test of all group
 #' @param p_value2 two-test of each pair
 #' @param stat_compare_means_param parameters parse to \code{\link[ggpubr]{stat_compare_means}}
 #' @param trend_line add a trend line
 #' @param trend_line_param parameters parse to \code{\link[ggplot2]{geom_smooth}}
 #' @param only_sig only_sig for p_value2
+#' @param paired if paired is TRUE, points in different groups will be connected by lines. So the row names order is important.
+#' @param paired_line_param parameters parse to \code{\link[ggplot2]{geom_line}}.
 #'
 #' @return a ggplot
 #' @export
@@ -1033,13 +1079,14 @@ areaplot <- function(otutab, metadata = NULL, group = "Group", get_data = FALSE,
 #' group_box(a, group = rep(c("a", "b", "c"), each = 6))
 group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
                       group_order = NULL, facet_order = NULL,
-                      alpha = FALSE, method = "wilcox", alpha_param = list(color = "red"), point_param = NULL,
+                      paired = FALSE, paired_line_param = list(),
+                      alpha = FALSE, method = "wilcox", alpha_param = list(), point_param = NULL,
                       p_value1 = FALSE, p_value2 = FALSE, only_sig = TRUE, stat_compare_means_param = NULL,
-                      trend_line = FALSE, trend_line_param = list(color = "blue")) {
+                      trend_line = FALSE, trend_line_param = list()) {
   # data transform
   g_name <- NULL
 
-  value <- indexes <- variable <- high <- low <- text_param <- y <- NULL
+  value <- indexes <- variable <- high <- low <- text_param <- y <- `_Line` <- NULL
   if (is.vector(tab)) {
     tab <- data.frame(value = tab)
   } else {
@@ -1054,7 +1101,7 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
     if (is.null(metadata) && !is.null(group)) {
       md <- data.frame(tab, group = group, check.names = FALSE)
     } else if (!is.null(metadata) && !is.null(group)) {
-      if (!all(rownames(metadata) %in% rownames(tab))) message("rownames dont match in tab and metadata")
+      if (!all(rownames(metadata) %in% rownames(tab))) message("rownames do not match in tab and metadata")
       idx <- rownames(metadata) %in% rownames(tab)
       metadata <- metadata[idx, , drop = FALSE]
       tab <- tab[rownames(metadata), , drop = FALSE]
@@ -1063,22 +1110,36 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
     }
   }
   md$group <- change_fac_lev(md$group, levels = group_order)
+  id_var <- "group"
 
-  md %>% reshape2::melt(id.vars = "group", variable.name = "indexes") -> md
+  if (paired) {
+    n_line <- table(md$group)[1]
+    if (!all(table(md$group) == n_line)) stop("all levels number should be equal when paired==TRUE")
+    md$`_Line` <- NA
+    for (i in levels(md$group)) {
+      md[md$group == i, "_Line"] <- paste0("Line", seq_len(n_line))
+    }
+    id_var <- c("group", "_Line")
+  }
+
+  md %>% reshape2::melt(id.vars = id_var, variable.name = "indexes") -> md
   md$indexes <- change_fac_lev(md$indexes, levels = facet_order)
+
+  default_jitter <- position_jitter(width = 0.15, seed = 123)
+  if (paired) default_jitter <- position_jitter(width = 0, seed = 123)
 
   # main plot
   if (mode == 1) {
     p <- ggplot(md, aes(x = group, y = value, color = group, group = group)) +
       stat_boxplot(geom = "errorbar", width = 0.15) +
       geom_boxplot(outlier.shape = NA) +
-      do.call(geom_jitter, update_param(list(width = 0.15, alpha = 0.8, size = 0.5), point_param))
+      do.call(geom_point, update_param(list(position = default_jitter, alpha = 0.8, size = 0.5), point_param))
   }
   if (mode == 2) {
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
       # stat_boxplot(geom = "errorbar",width=0.15)+
       geom_boxplot(color = "black", outlier.shape = NA) +
-      do.call(geom_jitter, update_param(list(color = "black", width = 0.15, alpha = 0.8, size = 0.5), point_param))
+      do.call(geom_point, update_param(list(position = default_jitter, color = "black", alpha = 0.8, size = 0.5), point_param))
   }
   if (mode == 3) {
     lib_ps("gghalves", library = FALSE)
@@ -1097,7 +1158,7 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
       geom_violin(trim = FALSE) +
       geom_boxplot(width = 0.1, outlier.shape = NA) +
-      do.call(geom_jitter, update_param(list(width = 0.15, alpha = 0.8, size = 0.5), point_param))
+      do.call(geom_point, update_param(list(position = default_jitter, alpha = 0.8, size = 0.5), point_param))
   }
   if (mode == 5) {
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
@@ -1122,7 +1183,7 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
       # 添加误差线
       stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar", color = "black", width = .2) +
       # 添加抖动散点图
-      do.call(geom_jitter, update_param(list(width = 0.2, alpha = 0.8, size = 2, shape = 21), point_param))
+      do.call(geom_point, update_param(list(position = default_jitter, alpha = 0.8, size = 2, shape = 21), point_param))
   }
   if (mode == 8) {
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
@@ -1131,7 +1192,7 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
       # 添加误差线
       stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar", color = "black", width = .2) +
       # 添加抖动散点图
-      do.call(geom_jitter, update_param(list(width = 0.2, alpha = 0.8, size = 0.5), point_param))
+      do.call(geom_point, update_param(list(position = default_jitter, alpha = 0.8, size = 0.5), point_param))
   }
   if (mode == 9) {
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
@@ -1151,10 +1212,18 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
   p <- p + guides(color = guide_legend(g_name), fill = guide_legend(g_name)) +
     ylab(label = NULL) + xlab(label = NULL)
 
+  if (paired) {
+    if ("position" %in% names(point_param)) default_jitter <- point_param[["position"]]
+    p <- p + do.call(geom_line, update_param(
+      list(mapping = aes(group = `_Line`), color = "grey", position = default_jitter),
+      paired_line_param
+    ))
+  }
+
   # trend line
   if (trend_line) {
     p <- p + do.call(geom_smooth, update_param(
-      list(mapping = aes(group = 1), method = "glm", se = FALSE, alpha = 0.8),
+      list(mapping = aes(group = 1), method = "glm", se = FALSE, alpha = 0.8, color = "blue"),
       trend_line_param
     ))
   }
@@ -1174,6 +1243,9 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
     if (p_value1 == TRUE) p_value1 <- NULL
     md %>% summarise(low = min(value, na.rm = TRUE), high = max(value, na.rm = TRUE)) -> aa
     #    p <- p + ggpubr::stat_compare_means(show.legend = FALSE, method = p_value1, label.x = 1, label.y.npc = 1)
+    if (paired) {
+      stat_compare_means_param <- update_param(stat_compare_means_param, list(paired = TRUE))
+    }
     p <- p + do.call(ggpubr::stat_compare_means, update_param(list(
       show.legend = FALSE, method = p_value1, label.x = 1, label.y.npc = 1
     ), stat_compare_means_param))
@@ -1273,7 +1345,7 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
 gghuan <- function(tab, reorder = TRUE, mode = "1", topN = 5, name = TRUE, percentage = TRUE,
                    bar_params = NULL, text_params = NULL, text_params2 = NULL) {
   type <- ymax <- ymin <- rate_per <- fraction <- NULL
-  if (ncol(tab) > 2) stop("need two columns: first is type, second is number")
+  if (ncol(tab) != 2) stop("need two columns: first is type, second is number")
 
   colnames(tab)[1] -> g_name
   colnames(tab) <- c("type", "n")
@@ -1311,7 +1383,7 @@ gghuan <- function(tab, reorder = TRUE, mode = "1", topN = 5, name = TRUE, perce
   if (mode == "1") {
     plt <- ggplot(data = plot_df, aes(fill = type, ymax = ymax, ymin = ymin, xmax = 3.2, xmin = 1.7)) +
       do.call(geom_rect, update_param(list(alpha = 0.8), bar_params)) +
-      xlim(c(0, 5)) +
+      xlim(c(0, 4)) +
       coord_polar(theta = "y") +
       do.call(geom_text, update_param(list(mapping = aes(x = 2.5, y = ((ymin + ymax) / 2), label = rate_per), size = 3.6, col = "white"), text_params))
 
@@ -1416,11 +1488,145 @@ gghuan2 <- function(tab = NULL, huan_width = 1, circle_width = 1, space_width = 
     theme(panel.border = element_blank(), legend.position = "none")
 }
 
+#' ggmosaic for mosaic plot
+#'
+#' @param tab your dataframe, must have 3 columns, the third column must be numeric
+#' @param rect_params parameters parse to \code{\link[ggplot2]{geom_rect}}
+#' @param show_number show "number" or "percentage" or "none"
+#' @param number_params parameters parse to \code{\link[ggplot2]{geom_text}}
+#' @param x_label show x label on "top" or "bottom" or "none"
+#' @param y_label show y label on "right" or "left" or "none"
+#' @param label_params parameters parse to \code{\link[ggplot2]{geom_text}}
+#' @param chisq_test whether show chisq test
+#' @param rect_space rect_space, defalut 0.
+#'
+#' @return a ggplot
+#' @export
+#'
+#' @examples
+#' data(mtcars)
+#' tab <- dplyr::count(mtcars, gear, cyl)
+#' ggmosaic(tab,
+#'   show_number = "number", x_label = "top",
+#'   y_label = "right", chisq_test = TRUE
+#' )
+ggmosaic <- function(tab, rect_params = list(), rect_space = 0,
+                     show_number = c("number", "percentage", "none")[1], number_params = list(),
+                     x_label = c("top", "bottom", "none")[1],
+                     y_label = c("right", "left", "none")[1], label_params = list(),
+                     chisq_test = TRUE) {
+  value <- Var1 <- value_x <- pct <- xmax <- percentage <- ymax <- ymin <- xmin <- Var2 <- xtext <- ytext <- NULL
+  if (is.table(tab)) {
+    oldcolnames <- names(attributes(tab)$dimnames)
+    tab <- as.data.frame(tab)
+    colnames(tab)[1:2] <- oldcolnames
+  }
+  if (!is.data.frame(tab)) stop("tab must be a data frame or table")
+  if (ncol(tab) != 3 || !is.numeric(tab[, 3])) stop("tab must have 3 columns and the third column must be numeric")
+  oldcolnames <- colnames(tab)
+  colnames(tab) <- c("Var1", "Var2", "value")
+  tab %>%
+    dplyr::filter(value > 0) %>%
+    dplyr::mutate_at(1:2, as.factor) -> tab
+  tab %>%
+    dplyr::group_by_at(1:2) %>%
+    dplyr::summarise(value = sum(value)) %>%
+    filter(value > 0) -> tab
+  dplyr::group_by(tab, Var1) %>%
+    dplyr::summarise(value_x = sum(value)) %>%
+    dplyr::mutate(pct = value_x / sum(value_x), xmax = cumsum(pct), xmin = xmax - pct) -> tab1
 
-#' gg Histogram
+  dplyr::left_join(tab, tab1[, c("Var1", "xmin", "xmax")], by = "Var1") -> tab
+  dplyr::group_by(tab, Var1) %>%
+    dplyr::mutate(
+      percentage = round(value / sum(value), 4),
+      ymax = cumsum(percentage),
+      ymin = ymax - percentage
+    ) -> tab
+  dplyr::ungroup(tab) -> tab
+
+  p <- ggplot() +
+    do.call(geom_rect, update_param(
+      list(
+        mapping = aes(ymin = ymin, ymax = ymax - rect_space, xmin = xmin, xmax = xmax - rect_space, fill = Var2),
+        data = tab, colour = "black"
+      ),
+      rect_params
+    ))
+
+  show_number <- match.arg(show_number, choices = c("number", "percentage", "none"))
+  if (show_number != "none") {
+    tab$xtext <- with(tab, xmin + (xmax - xmin) / 2)
+    tab$ytext <- with(tab, ymin + (ymax - ymin) / 2)
+    if (show_number == "number") {
+      tab$percentage <- with(tab, value)
+    }
+    p <- p +
+      do.call(geom_text, update_param(
+        list(mapping = aes(x = xtext, y = ytext, label = percentage), data = tab, size = 4),
+        number_params
+      ))
+  }
+
+  x_label <- match.arg(x_label, choices = c("top", "bottom", "none"))
+  if (x_label != "none") {
+    dplyr::distinct(tab, Var1, xtext) -> x_text
+    if (x_label == "top") {
+      p <- p + do.call(geom_text, update_param(
+        list(mapping = aes(x = xtext, y = 1.03, label = Var1), data = x_text, size = 4),
+        label_params
+      ))
+    } else {
+      p <- p + do.call(geom_text, update_param(
+        list(mapping = aes(x = xtext, y = -0.03, label = Var1), data = x_text, size = 4),
+        label_params
+      ))
+    }
+  }
+
+  y_label <- match.arg(y_label, choices = c("right", "left", "none"))
+  if (y_label != "none") {
+    if (y_label == "right") {
+      dplyr::distinct(tab, Var1, Var2, ytext) %>% filter(Var1 == levels(Var1)[nlevels(Var1)]) -> y_text
+      p <- p + do.call(geom_text, update_param(
+        list(mapping = aes(x = 1.02, y = ytext, label = Var2), data = y_text, size = 4, hjust = 0),
+        label_params
+      ))
+    } else {
+      dplyr::distinct(tab, Var1, Var2, ytext) %>% filter(Var1 == levels(Var1)[1]) -> y_text
+      p <- p + do.call(geom_text, update_param(
+        list(mapping = aes(x = -0.02, y = ytext, label = Var2), data = y_text, size = 4, hjust = 1),
+        label_params
+      ))
+    }
+  }
+
+  if (chisq_test) {
+    reshape2::dcast(tab, Var1 ~ Var2, value.var = "value") %>%
+      tibble::column_to_rownames("Var1") -> chi_tab
+    chi_tab[is.na(chi_tab)] <- 0
+    chisq.test(chi_tab) -> chisq
+    p <- p + ggtitle(paste("Chi-squared test: p-value=", format.pval(chisq$p.value)))
+  }
+
+  p <- p +
+    scale_x_continuous(breaks = seq(0, 1, 0.25)) +
+    labs(x = oldcolnames[1], y = oldcolnames[2]) +
+    theme(
+      panel.background = element_rect(fill = "white", colour = NA),
+      axis.text = element_blank(),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      legend.position = "none"
+    )
+  p
+}
+
+#' gg histogram
 #'
 #' @param x vector
 #' @param ... parameters parse to \code{\link[ggpubr]{gghistogram}}
+#' @param text_pos text postion, default is c(0.8, 0.8)
 #'
 #' @return ggplot
 #' @export
@@ -1429,7 +1635,7 @@ gghuan2 <- function(tab = NULL, huan_width = 1, circle_width = 1, space_width = 
 #' if (requireNamespace("ggpubr")) {
 #'   gghist(rnorm(100))
 #' }
-gghist <- function(x, ...) {
+gghist <- function(x, text_pos = c(0.8, 0.8), ...) {
   lib_ps("ggpubr")
   p <- do.call(ggpubr::gghistogram, update_param(list(data = x, fill = "skyblue2", add = "median", add_density = TRUE), list(...)))
 
@@ -1441,10 +1647,13 @@ gghist <- function(x, ...) {
   a <- round(summary(x), 2)
   lims <- ggplot_lim(p)
   p + annotate("text",
-    x = 0.8 * lims$x[2] + 0.2 * lims$x[1], y = 0.8 * lims$y[2] + 0.2 * lims$y[1],
+    x = text_pos[1] * lims$x[2] + (1 - text_pos[1]) * lims$x[1],
+    y = text_pos[2] * lims$y[2] + (1 - text_pos[2]) * lims$y[1],
     label = paste0("Min: ", a[1], "\nMedian: ", a[3], "\nMean: ", a[4], "\nMax: ", a[6])
   )
 }
+
+
 
 
 #' Fit a linear model and plot
@@ -1452,8 +1661,9 @@ gghist <- function(x, ...) {
 #' @param tab your dataframe
 #' @param var which colname choose for var or a vector
 #' @param metadata the dataframe contains the var
-#' @param lm_color "red"
 #' @param ... parameters parse to \code{\link[ggplot2]{geom_point}}
+#' @param facet whether facet?
+#' @param smooth_param parameters parse to \code{\link[ggplot2]{geom_smooth}}
 #'
 #' @return a ggplot
 #' @export
@@ -1465,11 +1675,11 @@ gghist <- function(x, ...) {
 #'   my_lm(c(1:50) + runif(50, 0, 5), var = 1:50)
 #' }
 #' }
-my_lm <- function(tab, var, metadata = NULL, lm_color = "red", ...) {
+my_lm <- function(tab, var, metadata = NULL, smooth_param = list(), facet = TRUE, ...) {
   lib_ps("ggpmisc", library = FALSE)
   # data transform
   g_name <- NULL
-  value <- eq.label <- adj.rr.label <- p.value.label <- NULL
+  value <- eq.label <- adj.rr.label <- p.value.label <- indexes <- NULL
   if (is.vector(tab)) tab <- data.frame(value = tab)
 
   if (is.null(metadata)) {
@@ -1488,9 +1698,9 @@ my_lm <- function(tab, var, metadata = NULL, lm_color = "red", ...) {
   md$indexes <- factor(md$indexes, levels = colnames(tab))
 
   # main plot
-  p <- ggplot(md, aes(var, value)) +
+  p <- ggplot(md, aes(x = var, y = value)) +
     geom_point(...) +
-    geom_smooth(method = "lm", color = lm_color, se = FALSE, formula = "y~x") +
+    do.call(geom_smooth, update_param(list(method = "lm", se = FALSE, formula = "y~x", color = "red"), smooth_param)) +
     labs(x = NULL, y = NULL) +
     ggpmisc::stat_poly_eq(
       aes(label = paste(after_stat(eq.label),
@@ -1498,15 +1708,32 @@ my_lm <- function(tab, var, metadata = NULL, lm_color = "red", ...) {
         after_stat(p.value.label),
         sep = "~~~~~"
       )),
-      formula = y ~ x, parse = TRUE, color = lm_color,
-      size = 3, # Formula font size
+      formula = y ~ x, parse = TRUE, color = ifelse(is.null(smooth_param$color), "red", smooth_param$color),
+      size = 2.5, # Formula font size
       label.x = 0.05, label.y = 1.05
     )
 
   # facet?
   flag <- (ncol(tab) == 1)
   if (!flag) {
-    p <- p + facet_wrap(. ~ indexes, scales = "free_y")
+    if (facet) {
+      p <- p + facet_wrap(. ~ indexes, scales = "free_y")
+    } else {
+      p <- ggplot(md, aes(x = var, y = value, color = indexes)) +
+        geom_point(...) +
+        do.call(geom_smooth, update_param(list(method = "lm", se = FALSE, formula = "y~x"), smooth_param)) +
+        labs(x = NULL, y = NULL) +
+        ggpmisc::stat_poly_eq(
+          aes(label = paste(after_stat(eq.label),
+            after_stat(adj.rr.label),
+            after_stat(p.value.label),
+            sep = "~~~~~"
+          )),
+          formula = y ~ x, parse = TRUE,
+          size = 2.5, # Formula font size
+          label.x = 0.05, label.y = seq(1, (1.05 - 0.05 * ncol(tab)), -0.05)
+        )
+    }
   } else {
     ylab <- colnames(tab)[1]
     p <- p + ylab(ylab)
@@ -1523,11 +1750,12 @@ my_lm <- function(tab, var, metadata = NULL, lm_color = "red", ...) {
 #'
 #' @param china_shp china.json file
 #' @param download_dir download_dir, "pcutils_temp"
+#' @param text_param parameters parse to \code{\link[ggplot2]{geom_text}}
 #'
 #' @return a ggplot
 #' @export
 #' @import ggplot2
-china_map <- function(china_shp = NULL, download_dir = "pcutils_temp") {
+china_map <- function(china_shp = NULL, download_dir = "pcutils_temp", text_param = NULL) {
   name <- NULL
   lib_ps("ggspatial", "sf", library = FALSE)
 
@@ -1541,12 +1769,16 @@ china_map <- function(china_shp = NULL, download_dir = "pcutils_temp") {
 
   china <- sf::read_sf(china_shp)
 
+  lib_ps("sysfonts", "showtext", library = FALSE)
+  showtext::showtext_auto()
   ggplot() +
     geom_sf(
       data = china, fill = pcutils::get_cols(35, pal = "col3"),
       alpha = 0.8, linewidth = 0.5, color = "black"
     ) +
-    geom_sf_text(data = china, aes(label = name), size = 3, family = "STKaiti") +
+    do.call(geom_sf_text, update_param(list(
+      data = china, mapping = aes(label = name), size = 3
+    ), text_param)) +
     # spatial-aware automagic north arrow
     ggspatial::annotation_scale(location = "bl") +
     ggspatial::annotation_north_arrow(
@@ -1554,9 +1786,6 @@ china_map <- function(china_shp = NULL, download_dir = "pcutils_temp") {
       style = ggspatial::north_arrow_fancy_orienteering
     ) +
     theme(
-      # aspect.ratio = 1.25,
-      # axis.text = element_blank(),
-      # axis.ticks = element_blank(),
       axis.title = element_blank(),
       # panel.grid = element_blank(),
       panel.background = element_blank(),
@@ -1581,6 +1810,7 @@ china_map <- function(china_shp = NULL, download_dir = "pcutils_temp") {
 #' @param scale_params parameters parse to `ggspatial::annotation_scale`
 #' @param add_north_arrow add annotation_north_arrow
 #' @param north_arrow_params parameters parse to `ggspatial::annotation_north_arrow`
+#' @param leaflet_pal leaflet color palette
 #' @param label_params parameters parse to geom_sf_text
 #'
 #' @return map
@@ -1598,6 +1828,7 @@ china_map <- function(china_shp = NULL, download_dir = "pcutils_temp") {
 sample_map <- function(metadata, mode = 1, map_params = list(),
                        group = NULL, point_params = list(),
                        label = NULL, label_params = list(),
+                       leaflet_pal = NULL,
                        shp_file = NULL, crs = 4326, xlim = NULL, ylim = NULL,
                        add_scale = TRUE, scale_params = list(),
                        add_north_arrow = TRUE, north_arrow_params = list()) {
@@ -1631,10 +1862,17 @@ sample_map <- function(metadata, mode = 1, map_params = list(),
     gre_text <- gre_text %>%
       lapply(htmltools::HTML)
 
+    if (is.null(leaflet_pal)) {
+      if (is.numeric()) {
+        leaflet_pal <- get_cols(pal = "bluered")
+      } else {
+        leaflet_pal <- get_cols(nlevels(factor(metadata$Group)))
+      }
+    }
     if (is.numeric(metadata$Group)) {
-      type_col <- leaflet::colorNumeric(palette = get_cols(pal = "bluered"), domain = metadata$Group)
+      type_col <- leaflet::colorNumeric(palette = leaflet_pal, domain = metadata$Group)
     } else {
-      type_col <- leaflet::colorFactor(palette = get_cols(nlevels(factor(metadata$Group))), domain = metadata$Group)
+      type_col <- leaflet::colorFactor(palette = leaflet_pal, domain = metadata$Group)
     }
 
     if (is.null(xlim)) xlim <- range(metadata$Longitude)
@@ -1935,10 +2173,12 @@ my_voronoi_treemap <- function(test, ...) {
 #' My circo plot
 #
 #' @param df dataframe with three column
+#'
 #' @param reorder reorder by number?
 #' @param pal a vector of colors, you can get from here too: `RColorBrewer::brewer.pal(5,"Set2")` or `ggsci::pal_aaas()(5)`
 #' @param mode "circlize","chorddiag"
 #' @param ... \code{\link[circlize]{chordDiagram}}
+#' @param legend plot legend?
 #'
 #' @return chordDiagram
 #' @export
@@ -1956,7 +2196,8 @@ my_voronoi_treemap <- function(test, ...) {
 #' }
 #' }
 #'
-my_circo <- function(df, reorder = TRUE, pal = NULL, mode = c("circlize", "chorddiag")[1], ...) {
+my_circo <- function(df, reorder = TRUE, pal = NULL,
+                     mode = c("circlize", "chorddiag")[1], legend = TRUE, ...) {
   mode <- match.arg(mode, c("circlize", "chorddiag"))
   colnames(df) <- c("from", "to", "count")
   if (mode == "chorddiag") {
@@ -1983,14 +2224,26 @@ my_circo <- function(df, reorder = TRUE, pal = NULL, mode = c("circlize", "chord
     tab <- tab[s_name, ]
   }
 
+  ncolor <- unique(c(colnames(tab), rownames(tab)))
   if (is.null(pal)) {
-    pal <- get_cols(length(unique(c(colnames(tab), rownames(tab)))))
-  } else if (is.null(names(pal))) pal <- rep(pal, length.out = length(unique(c(colnames(tab), rownames(tab)))))
+    pal <- get_cols(ncolor)
+  } else if (is.null(names(pal))) {
+    pal <- rep(pal, length.out = length(ncolor))
+    names(pal) <- ncolor
+  }
 
   if (mode == "circlize") {
     lib_ps("circlize", library = FALSE)
     circlize::chordDiagram(tab, grid.col = pal, ...)
   }
+
+  if (legend) {
+    graphics::legend(
+      x = 1, y = 1, legend = names(pal), pt.bg = pal, pch = 21,
+      title = "", title.col = "black", bty = "n"
+    )
+  }
+
   # if (mode == "chorddiag") {
   #     lib_ps("chorddiag", library = FALSE)
   #     chorddiag::chorddiag(tab, groupedgeColor = pal, ...)
@@ -2087,15 +2340,25 @@ my_circle_packing <- function(test, anno = NULL, mode = 1,
 # ========Easter eggs=======
 
 #' Show my little cat named Guo Dong which drawn by my girlfriend.
+#'
 #' @param mode 1~2
+#' @param picture 1~2
+#'
 #' @return a ggplot
 #' @export
-my_cat <- function(mode = 1) {
+my_cat <- function(mode = 1, picture = 1) {
   little_guodong <- NULL
+  # data("little_guodong", package = "pcutils", envir = environment())
+  # magick::image_read("~/Pictures/smallguodong2.png")->a #透明背景png
+  # # magick::image_scale(a,"25%")->a
+  # little_guodong2=grid::rasterGrob(a,interpolate=TRUE)
+  # little_guodong[[2]]=little_guodong2
+  # save(little_guodong, file = "data/little_guodong.rda",compress = "xz")
   data("little_guodong", package = "pcutils", envir = environment())
+  pic <- little_guodong[[picture]]
   if (mode == 1) {
     p <- ggplot() +
-      annotation_custom(little_guodong, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
+      annotation_custom(pic, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
       theme_void()
   }
   if (mode == 2) {
@@ -2105,7 +2368,7 @@ my_cat <- function(mode = 1) {
     d <- data.frame(x = 2 * (sin(t) - 0.5 * sin(2 * t)), y = 2 * (cos(t) - 0.5 * cos(2 * t)))
 
     temp <- tempdir()
-    ggsave(filename = paste0(temp, "/", "little_guodong.png"), plot = little_guodong, bg = "transparent")
+    ggsave(filename = paste0(temp, "/", "little_guodong.png"), plot = pic, bg = "transparent")
     p <- ggplot(d, aes(x, y)) +
       ggimage::geom_image(image = paste0(paste0(temp, "/", "little_guodong.png")), size = .05) +
       theme_void()

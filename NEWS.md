@@ -1,9 +1,30 @@
+# pcutils v0.2.6 Notes
+
+## Added
+
+- added `download_ncbi_genome_file` function <2024-06-18, Tue>
+- added 'paired' argument for `group_box()` <2024-06-14, Fri>
+- added `df2distance` function <2024-05-10, Fri>
+- added `ggmosaic` function for mosaic plot <2024-03-25, Mon>
+
+## Fixed
+
+- fixed `scale_color_pc()` and `scale_fill_pc()` <2024-04-07, Sun>
+
 # pcutils v0.2.5 Notes
 
 ## Others
 
 - fixed all examples without suggested packages <2024-03-19, Tue>
 - deleted vignette and other useless functions <2024-03-19, Tue>
+
+## Added
+
+- added package page and R CMD check github action <2024-03-20, Wed>
+
+## Fixed
+
+- fixed the `read.file`. <2024-03-20, Wed>
 
 # pcutils v0.2.4 Notes
 

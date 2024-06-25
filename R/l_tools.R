@@ -99,10 +99,15 @@ copy_vector <- function(vec) {
   }
   lib_ps("clipr", library = FALSE)
   if (is.numeric(vec)) {
-    clipr::write_clip(paste0("c(", paste0(vec, collapse = ","), ")"))
+    res <- paste0("c(", paste0(vec, collapse = ","), ")")
   } else {
-    clipr::write_clip(paste0('c("', paste0(vec, collapse = '","'), '")'))
+    res <- paste0('c("', paste0(vec, collapse = '","'), '")')
   }
+  if (!is.null(names(vec))) {
+    res <- paste0("setNames(", res, ",c(", paste0('"', names(vec), '"', collapse = ","), "))")
+  }
+
+  clipr::write_clip(res)
   message("copy done, just Ctrl+V")
 }
 
@@ -198,8 +203,8 @@ tidai <- function(x, y, fac = FALSE, keep_origin = FALSE) {
 #' update_param(list(a = 1, b = 2), list(b = 5, c = 5))
 #'
 update_param <- function(default, update) {
-  if (length(default) == 0) default <- NULL
-  if (length(update) == 0) update <- NULL
+  if (missing(default) || length(default) == 0) default <- NULL
+  if (missing(update) || length(update) == 0) update <- NULL
   if (is.null(default)) {
     return(update)
   }
@@ -370,7 +375,7 @@ sanxian <- function(df, digits = 3, nrow = 10, ncol = 10, fig = FALSE, mode = 1,
 #' @param x your data.frame
 #' @param ... addtitional arguments for gerpl()
 #'
-#' @return a logical data.frame
+#' @return a logical matrix
 #' @export
 #' @examples
 #' matrix(letters[1:6], 2, 3) |> as.data.frame() -> a
@@ -395,7 +400,7 @@ grepl.data.frame <- function(pattern, x, ...) {
 #' @param x your data.frame
 #' @param ... additional arguments for gerpl()
 #'
-#' @return a logical data.frame
+#' @return a data.frame
 #' @export
 #' @examples
 #' matrix(letters[1:6], 2, 3) |> as.data.frame() -> a
@@ -409,7 +414,7 @@ gsub.data.frame <- function(pattern, replacement, x, ...) {
   if (.row_names_info(x) > 0L) {
     rownames(y) <- row.names(x)
   }
-  y
+  data.frame(y, check.names = FALSE)
 }
 
 # =======Read file========
@@ -430,8 +435,8 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, 
   if (!file.exists(file)) {
     stop(paste0(file, " does not exist!"))
   }
-  if (!interactive()) {
-    stop("This function is not allowed in non-interactive mode.")
+  if (!all_yes & !interactive()) {
+    stop("This function is not allowed in non-interactive mode when all_yes is FALSE.")
   }
 
   if ((file.size(file) > 1e6) & !all_yes) {
@@ -445,10 +450,6 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, 
     lib_ps("readr", library = FALSE)
     cat(readr::read_file(file))
   } else {
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(oldpar))
-    graphics::par(mar = rep(0, 4))
-
     if (is.null(format)) format <- tools::file_ext(file)
     format <- match.arg(format, c(
       "blast", "diamond", "fa", "fasta", "fna", "gff", "gtf",
@@ -456,8 +457,14 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, 
     ))
 
     if (format %in% c("gff", "gtf")) {
-      df <- utils::read.delim(file,
-        header = FALSE, stringsAsFactors = FALSE, comment.char = "#",
+      # 读取文件内容
+      lines <- readLines(file)
+      # 过滤掉注释行
+      data_lines <- lines[!grepl("^#", lines)]
+
+      df <- utils::read.table(
+        text = data_lines, sep = "\t",
+        header = FALSE, stringsAsFactors = FALSE, comment.char = "",
         col.names = c("seqid", "source", "feature", "start", "end", "score", "strand", "phase", "attributes")
       )
       return(df)
@@ -470,7 +477,7 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, 
 
     if (format %in% c("blast", "diamond")) {
       df <- utils::read.table(file,
-        sep = "\t",
+        sep = "\t", header = FALSE, stringsAsFactors = FALSE, comment.char = "",
         col.names = c(
           "Qseqid", "Sseqid", "Pident", "Length", "Mismatch", "Gapopen",
           "Qstart", "Qend", "Sstart", "Send", "E_value", "Bitscore"
@@ -480,6 +487,10 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, 
     }
 
     if (format %in% c("jpg", "png", "svg", "pdf")) {
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(oldpar))
+      graphics::par(mar = rep(0, 4))
+
       lib_ps("magick", library = FALSE)
       image <- magick::image_read(file, density = density, ...)
       if (length(image) > 1) message("Your file has more than one page! Print the first one page.")
@@ -858,4 +869,125 @@ split_text <- function(text, nchr_each = 200) {
 
   # Return the result
   return(result)
+}
+
+
+#' Download genome files from NCBI based on accession number
+#'
+#' This function downloads specific genomic files from NCBI's FTP server
+#' based on the provided accession number. It supports downloading
+#' different types of files, or the entire directory containing the files.
+#'
+#' @param accession A character string representing the NCBI accession number
+#'        (e.g., "GCF_001036115.1_ASM103611v1" or "GCF_001036115.1"). The accession can start with
+#'        "GCF" or "GCA".
+#' @param out_dir A character string representing the directory where the
+#'        downloaded files will be saved. Defaults to the current working directory (".").
+#' @param type A character string representing the type of file to download.
+#'        Supported types are "all", "gff", "fna". If "all" is specified,
+#'        the function will prompt the user to use command line tools to download
+#'        the entire directory. Defaults to "gff".
+#' @param file_suffix A character string representing the specific file suffix to download.
+#'        If specified, this will override the `type` parameter. Defaults to NULL.
+#' @param timeout A numeric value representing the maximum time in seconds to wait for the download. Defaults to 300.
+#'
+#' @details
+#' If the provided `accession` does not contain the version suffix (e.g., "GCF_001036115.1"),
+#' the function will query the NCBI FTP server to determine the full accession name.
+#'
+#' When `type` is set to "all", the function cannot download the entire directory
+#' directly but provides a command line example for the user to download the directory
+#' using tools like `wget`.
+#' @return No value
+#' @examples
+#' \dontrun{
+#' download_ncbi_genome_file("GCF_001036115.1", out_dir = "downloads", type = "gff")
+#' download_ncbi_genome_file("GCF_001036115.1", out_dir = "downloads", file_suffix = "_genomic.fna.gz")
+#' }
+#'
+#' @export
+download_ncbi_genome_file <- function(accession, out_dir = ".", type = "gff", file_suffix = NULL, timeout = 300) {
+  lib_ps("httr", library = FALSE)
+  # 基础URL
+  base_url <- "https://ftp.ncbi.nlm.nih.gov/genomes/all/"
+
+  # 确定是GCA还是GCF开头
+  prefix <- substr(accession, 1, 3)
+  if (!(prefix %in% c("GCF", "GCA"))) {
+    stop("Accession must start with 'GCF' or 'GCA'")
+  }
+  # 确定有无版本号
+  if (substr(accession, 14, 14) != ".") {
+    stop("Accession must have version number, such as GCF_001036115.1")
+  }
+
+  # 提取数字部分并格式化路径
+  numbers <- gsub("GCF_|GCA_|\\..*", "", accession)
+  formatted_path <- paste(substr(numbers, 1, 3), substr(numbers, 4, 6), substr(numbers, 7, 9), sep = "/")
+
+  # 基础路径
+  base_path <- paste0(base_url, prefix, "/", formatted_path, "/")
+
+  # 如果accession不包含详细版本后缀，则需要查找完整路径
+  if (!grepl("_", gsub("GCF_|GCA_", "", accession))) {
+    res <- httr::GET(base_path)
+    if (httr::status_code(res) != 200) {
+      stop("Unable to access the directory: ", base_path)
+    }
+    # 提取文件夹列表
+    content <- httr::content(res, "text")
+    folders <- regmatches(content, gregexpr(paste0(accession, "_[^/]+"), content))
+    if (length(folders[[1]]) == 0) {
+      stop("No matching folder found for accession: ", accession)
+    }
+    # 取第一个匹配的文件夹名
+    full_accession <- folders[[1]][1]
+  } else {
+    full_accession <- accession
+  }
+
+  # 如果指定了file_suffix，则直接使用file_suffix
+  if (!is.null(file_suffix)) {
+    file_name <- paste0(full_accession, file_suffix)
+  } else {
+    # 根据type确定文件后缀
+    file_suffix <- switch(type,
+      "all" = "",
+      "gff" = "_genomic.gff.gz",
+      "fna" = "_genomic.fna.gz",
+      "gbff" = "_genomic.gbff.gz",
+      "gtf" = "_genomic.gtf.gz",
+      "faa" = "_protein.faa.gz",
+      "gpff" = "_genomic.gpff.gz",
+      stop("Unsupported type: ", type)
+    )
+    file_name <- if (type == "all") "" else paste0(full_accession, file_suffix)
+  }
+
+  # 生成最终的URL
+  full_url <- paste0(base_path, full_accession, "/", file_name)
+
+  # 创建输出目录（如果不存在）
+  if (!dir.exists(out_dir)) {
+    dir.create(out_dir, recursive = TRUE)
+  }
+
+  if (type == "all") {
+    # 下载整个文件夹
+    message("Downloading the entire folder is not directly supported in R. You can use command line tools like wget or rsync for this purpose.")
+    message("Example command: wget -r -np -nH --cut-dirs=5 ", full_url, "\n")
+    return(full_url)
+  } else {
+    # 下载单个文件
+    dest_file <- file.path(out_dir, basename(file_name))
+    tryCatch(
+      {
+        download2(full_url, dest_file, timeout = timeout, mode = "wb")
+        message("File downloaded successfully: ", dest_file)
+      },
+      error = function(e) {
+        message("Error in downloading file: ", e)
+      }
+    )
+  }
 }

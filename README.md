@@ -1,20 +1,24 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# pcutils
+# pcutils <img src="man/figures/pcutils.png" align="right" width="120" />
 
 <!-- badges: start -->
 
+[![R-CMD-check](https://github.com/Asa12138/pcutils/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Asa12138/pcutils/actions/workflows/R-CMD-check.yaml)
 [![](https://img.shields.io/badge/blog-@asa-blue.svg)](https://asa-blog.netlify.app/)
 [![](http://cranlogs.r-pkg.org/badges/grand-total/pcutils)](https://cran.r-project.org/package=pcutils)
 [![](http://cranlogs.r-pkg.org/badges/last-month/pcutils)](https://cran.r-project.org/package=pcutils)
 [![](https://www.r-pkg.org/badges/version/pcutils?color=green)](https://cran.r-project.org/package=pcutils)
-[![](https://img.shields.io/badge/devel%20version-0.2.5-green.svg)](https://github.com/Asa12138/pcutils)
+[![](https://img.shields.io/badge/devel%20version-0.2.6-green.svg)](https://github.com/Asa12138/pcutils)
 <!-- badges: end -->
 
-pcutils is a package that contains some useful functions for me, it
+`pcutils` is a package that contains some useful functions for me, it
 offers a range of utilities and functions for everyday programming
 tasks.
+
+The HTML documentation of the latest version is available at [Github
+page](https://asa12138.github.io/pcutils/).
 
 ## Installation
 
@@ -22,7 +26,7 @@ The stable version is available on CRAN:
 
     install.packages("pcutils")
 
-Or you can install the development version of pcutils from
+Or you can install the development version of `pcutils` from
 [GitHub](https://github.com/) with:
 
 ``` r
@@ -61,6 +65,8 @@ devtools::install_github("Asa12138/pcutils")
 ### for web
 
 - `download2` download a file from a url
+
+- `download_ncbi_genome_file` download a file from NCBI
 
 - `search_browse` search and browse a website
 
@@ -128,6 +134,8 @@ devtools::install_github("Asa12138/pcutils")
 - `stackplot` plot a bar plot or stack bar plot easily; `areaplot` plot
   a area plot easily
 
+- `my_sankey` plot a sankey plot
+
 - `cor_plot` plot a correlation plot
 
 - `group_box` plot a boxplot easily
@@ -140,29 +148,25 @@ devtools::install_github("Asa12138/pcutils")
 
 - `gghist` plot a histogram
 
-![](man/figures/pcutils2.png)
-
 - `venn` plot a venn plot
 
 - `tax_pie` plot a pie plot
 
 - `tax_radar` plot a radar plot
 
-- `my_sankey` plot a sankey plot
-
 - `my_circo` plot a circlize plot
 
-- `my_synteny` plot a synteny plot
+![](man/figures/pcutils2.png)
 
 - `my_sunburst` plot a sunburst plot
+
+- `my_circle_packing` plot a circle packing plot
 
 - `my_treemap` plot a treemap plot
 
 - `my_voronoi_treemap` plot a voronoi treemap plot
 
-- `my_circle_packing` plot a circle packing plot
-
-## project
+## Project
 
 - `make_project` build a R project
 
@@ -170,7 +174,7 @@ devtools::install_github("Asa12138/pcutils")
 
 - `make_gitbook` build a git book
 
-## package
+## Package
 
 - `prepare_package` prepare a package
 

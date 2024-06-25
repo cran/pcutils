@@ -52,9 +52,11 @@ count2 <- function(df) {
 #' Group your data
 #'
 #' @param otutab data.frame
-#' @param group group vector
+#' @param group group vector or one of colnames(metadata)
 #' @param margin 1 for row and 2 for column(default: 2)
+#' @param metadata metadata
 #' @param act do (default: mean)
+#'
 #' @return data.frame
 #'
 #' @export
@@ -62,7 +64,16 @@ count2 <- function(df) {
 #' @examples
 #' data(otutab)
 #' hebing(otutab, metadata$Group)
-hebing <- function(otutab, group, margin = 2, act = "mean") {
+#' hebing(otutab, "Group", metadata = metadata, act = "sum")
+hebing <- function(otutab, group, margin = 2, act = "mean", metadata = NULL) {
+  # prepare otutab
+  if (!is.null(metadata)) {
+    if (length(group) != 1 | (!group[1] %in% colnames(metadata))) stop("group should be one of colnames(metadata)")
+    match_res <- match_df(otutab, metadata)
+    otutab <- match_res$otutab
+    group <- match_res$metadata[, group, drop = TRUE]
+  }
+
   if (margin == 2) {
     stats::aggregate(t(otutab), FUN = act, by = list(factor(group))) -> a
     a[, -1] -> a
@@ -115,7 +126,7 @@ rm_low <- function(otutab, relative_threshold = 1e-4) {
   f_mpa
 }
 
-#' Transfer your data
+#' Trans format your data
 #'
 #' @param df dataframe
 #' @param method "cpm","minmax","acpm","total","log", "max", "frequency", "normalize", "range", "rank", "rrank",
@@ -171,8 +182,8 @@ trans <- function(df, method = "normalize", margin = 2, ...) {
 #' mmscale(x, 5, 10)
 mmscale <- function(x, min_s = 0, max_s = 1, n = 1, plot = FALSE) {
   if (n <= 0) stop("n should bigger than 0")
-  if ((max(x) - min(x)) == 0) {
-    return(rep((min_s + max_s) / 2, length(x)))
+  if (max(x) == min(x)) {
+    return(rep(min_s, length(x)))
   }
   x2 <- ((x - min(x))^n)
   y <- min_s + (x2) / (max(x2)) * (max_s - min_s)
@@ -192,7 +203,7 @@ mmscale <- function(x, min_s = 0, max_s = 1, n = 1, plot = FALSE) {
 #' @export
 #'
 #' @examples
-#' strsplit2(c("a;b", "c;d"), ";")
+#' strsplit2(c("a;b", "c;d"), ";", colnames = c("col1", "col2"))
 strsplit2 <- function(x, split, colnames = NULL, ...) {
   x <- as.character(x)
   n <- length(x)
@@ -215,7 +226,7 @@ strsplit2 <- function(x, split, colnames = NULL, ...) {
 #' @return data.frame
 #' @export
 t2 <- function(data) {
-  as.data.frame(t(data), optional = TRUE)
+  data.frame(t(data), optional = TRUE, check.names = FALSE, stringsAsFactors = FALSE)
 }
 
 #' Explode a data.frame if there are split charter in one column
@@ -252,6 +263,45 @@ explode <- function(df, column, split = ",") {
 #' squash(df, "b", ",")
 squash <- function(df, column, split = ",") {
   stats::aggregate(stats::reformulate(".", response = column), df, paste, collapse = split)
+}
+
+#' Convert Three-column Data to Distance Matrix
+#'
+#' This function converts a data frame with three columns (from, to, count) into a distance matrix.
+#' The rows and columns of the matrix are all unique names from the 'from' and 'to' columns,
+#' and the matrix values are filled with counts.
+#'
+#' @param data A data frame containing three columns: from, to, count.
+#' @return A distance matrix where rows and columns are all unique names from 'from' and 'to' columns.
+#' @export
+#' @examples
+#' data <- data.frame(
+#'   from = c("A", "A", "B", "D"),
+#'   to = c("B", "C", "A", "B"),
+#'   count = c(1, 2, 3, 4)
+#' )
+#' df2distance(data)
+df2distance <- function(data) {
+  # Get all unique node names
+  nodes <- unique(c(data$from, data$to))
+
+  # Create an empty distance matrix
+  distance_matrix <- matrix(0, nrow = length(nodes), ncol = length(nodes), dimnames = list(nodes, nodes))
+
+  # Fill the distance matrix according to the data
+  for (i in 1:nrow(data)) {
+    from <- data$from[i]
+    to <- data$to[i]
+    count <- data$count[i]
+
+    # Fill the count value into the corresponding position
+    distance_matrix[from, to] <- count
+  }
+  # 如果需要对称矩阵，可以通过下面的代码实现
+  distance_matrix[upper.tri(distance_matrix)] <- distance_matrix[upper.tri(distance_matrix)] + t(distance_matrix)[upper.tri(distance_matrix)]
+  distance_matrix[lower.tri(distance_matrix)] <- t(distance_matrix)[lower.tri(distance_matrix)]
+
+  return(distance_matrix)
 }
 
 #' Prepare a numeric string
@@ -333,7 +383,7 @@ df2link <- function(test, fun = sum) {
       weight = tmp_fun_df[["x"]]
     ))
   }
-  return(list(links = links, nodes = nodes))
+  return(list(links = data.frame(links), nodes = nodes))
 }
 
 # ======= Statistical test======
@@ -746,6 +796,7 @@ lm_coefficients <- function(data, formula, standardize = FALSE, each = TRUE) {
 #' @return ggplot
 #' @exportS3Method
 #' @method plot coefficients
+#' @seealso [lm_coefficients]
 plot.coefficients <- function(x, mode = 1, number = FALSE, x_order = NULL, ...) {
   variable <- coefficient <- type <- adj_r2 <- NULL
 

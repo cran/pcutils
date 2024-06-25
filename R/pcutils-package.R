@@ -3,7 +3,7 @@
 
 ## usethis namespace: start
 #' @importFrom utils data head download.file untar combn
-#' @importFrom stats rnorm sd var na.omit setNames median quantile as.formula coef cor dist start end hclust lm model.frame
+#' @importFrom stats rnorm sd var na.omit setNames median quantile as.formula coef cor dist start end hclust lm model.frame chisq.test
 #' @importFrom grDevices colorRampPalette png pdf dev.off
 #' @importFrom graphics plot.new text legend hist par
 #' @import dplyr
@@ -31,7 +31,9 @@ refresh_config <- function() {
   if (file.exists(file_path)) {
     options_to_load <- readRDS(file = file_path)
     if (length(options_to_load) == 0) options_to_load <- NULL
-    options_to_load <- pcutils::update_param(default_options, options_to_load)
+    inter <- intersect(names(options_to_load), names(default_options))
+    la <- setdiff(names(default_options), inter)
+    options_to_load <- append(default_options[la, drop = FALSE], options_to_load)
   } else {
     options_to_load <- default_options
   }
