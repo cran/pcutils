@@ -69,29 +69,67 @@ hebing <- function(otutab, group, margin = 2, act = "mean", metadata = NULL) {
   # prepare otutab
   if (!is.null(metadata)) {
     if (length(group) != 1 | (!group[1] %in% colnames(metadata))) stop("group should be one of colnames(metadata)")
-    match_res <- match_df(otutab, metadata)
-    otutab <- match_res$otutab
-    group <- match_res$metadata[, group, drop = TRUE]
+    if (margin == 2) {
+      match_res <- match_df(otutab, metadata)
+      otutab <- match_res$otutab
+      group <- match_res$metadata[, group, drop = TRUE]
+    } else {
+      match_res <- match_df(t2(otutab), metadata)
+      otutab <- t2(match_res$otutab)
+      group <- match_res$metadata[, group, drop = TRUE]
+    }
   }
 
   if (margin == 2) {
     stats::aggregate(t(otutab), FUN = act, by = list(factor(group))) -> a
-    a[, -1] -> a
-    data.frame(t(a)) -> a
+    a[, -1, drop = FALSE] -> a
+    data.frame(t2(a), check.names = FALSE) -> a
     levels(factor(group)) -> colnames(a)
   } else {
     stats::aggregate(otutab, FUN = act, by = list(factor(group))) -> a
-    a[, -1] -> a
+    a[, -1, drop = FALSE] -> a
     levels(factor(group)) -> rownames(a)
   }
   return(a)
 }
 
+#' Group your data
+#'
+#' @param otutab data.frame
+#' @param group_df group data.frame with two columns (id and group). The same ID can be mapped to multiple groups.
+#' @param margin 1 for row and 2 for column(default: 2)
+#' @param act do (default: mean)
+#'
+#' @return data.frame
+#'
+#' @export
+#'
+#' @examples
+#' data(otutab)
+#' hebing2(otutab, data.frame(id = c("NS1", "NS2", "NS1", "NS3"), group = c("A", "A", "B", "B")))
+hebing2 <- function(otutab, group_df, margin = 2, act = "mean") {
+  stopifnot(is.data.frame(group_df) & ncol(group_df) == 2)
+  colnames(group_df) <- c("id", "group")
+
+  if (margin == 2) {
+    otutab <- t2(otutab)
+    as.character(rownames(otutab)) -> otutab$id
+    tmpdf <- dplyr::inner_join(group_df, otutab, by = "id")
+    b <- pcutils::hebing(dplyr::select(tmpdf, -c("id", "group")), tmpdf$group, 1, act = act)
+    b <- t2(b)
+  } else {
+    as.character(rownames(otutab)) -> otutab$id
+    tmpdf <- dplyr::inner_join(group_df, otutab, by = "id")
+    b <- pcutils::hebing(dplyr::select(tmpdf, -c("id", "group")), tmpdf$group, 1, act = act)
+  }
+  return(b)
+}
+
 #' Filter your data
 #'
 #' @param tab dataframe
-#' @param sum the rowsum should bigger than sum(default:10)
-#' @param exist the exist number bigger than exist(default:1)
+#' @param sum the rowsum should bigger than sum (default:10)
+#' @param exist the exist number bigger than exist (default:1)
 #'
 #' @return input object
 #' @export
@@ -226,7 +264,7 @@ strsplit2 <- function(x, split, colnames = NULL, ...) {
 #' @return data.frame
 #' @export
 t2 <- function(data) {
-  data.frame(t(data), optional = TRUE, check.names = FALSE, stringsAsFactors = FALSE)
+  as.data.frame(t(data), optional = TRUE, check.names = FALSE, stringsAsFactors = FALSE)
 }
 
 #' Explode a data.frame if there are split charter in one column
@@ -302,6 +340,24 @@ df2distance <- function(data) {
   distance_matrix[lower.tri(distance_matrix)] <- t(distance_matrix)[lower.tri(distance_matrix)]
 
   return(distance_matrix)
+}
+
+#' Convert a distance matrix to a data frame
+#'
+#' This function converts a distance matrix into a data frame with three columns: from, to, count.
+#' The rows and columns of the matrix are all unique names from the 'from' and 'to' columns,
+#'
+#' @param distance_matrix A distance matrix where rows and columns are all unique names from 'from' and 'to' columns.
+#' @return A data frame containing three columns: from, to, count.
+#' @export
+#' @examples
+#' distance_matrix <- matrix(c(0, 1, 2, 3, 4, 5, 6, 7, 8), nrow = 3)
+#' distance2df(distance_matrix)
+distance2df <- function(distance_matrix) {
+  distance_matrix <- as.matrix(distance_matrix)
+  df <- reshape2::melt(distance_matrix)
+  colnames(df) <- c("from", "to", "count")
+  df
 }
 
 #' Prepare a numeric string
@@ -564,7 +620,10 @@ multitest <- function(var, group, print = TRUE, return = FALSE) {
 #' @param metadata sample information dataframe contains group
 #' @param method 	the type of test. Default is wilcox.test. Allowed values include:
 #' \itemize{\item \code{\link[stats]{t.test}} (parametric) and \code{\link[stats]{wilcox.test}} (non-parametric). Perform comparison between two groups of samples. If the grouping variable contains more than two levels, then a pairwise comparison is performed.
-#' \item \code{\link[stats]{anova}} (parametric) and \code{\link[stats]{kruskal.test}} (non-parametric). Perform one-way ANOVA test comparing multiple groups.}
+#' \item \code{\link[stats]{anova}} (parametric) and \code{\link[stats]{kruskal.test}} (non-parametric). Perform one-way ANOVA test comparing multiple groups.
+#' \item \code{\link[stats]{chisq.test}},  performs chi-squared contingency table tests and goodness-of-fit tests.
+#' \item 'pearson', 'kendall', or 'spearman' (correlation), see \code{\link[stats]{cor}}.}
+#' @param pattern a named vector matching the group, e.g. c('G1'=1,'G2'=3,'G3'=2), use the correlation analysis with specific pattern to calculate p-value.
 #' @param threads default 1
 #' @param p.adjust.method p.adjust.method, see \code{\link[stats]{p.adjust}}, default BH.
 #' @param verbose logical
@@ -576,61 +635,154 @@ multitest <- function(var, group, print = TRUE, return = FALSE) {
 #' data(otutab)
 #' group_test(otutab, metadata$Group, method = "kruskal.test")
 #' group_test(otutab[, 1:12], metadata$Group[1:12], method = "wilcox.test")
-group_test <- function(df, group, metadata = NULL, method = "wilcox.test",
-                       threads = 1, p.adjust.method = "BH", verbose = TRUE) {
+group_test <- function(df, group, metadata = NULL, method = "wilcox.test", pattern = NULL,
+                       p.adjust.method = "none", threads = 1, verbose = TRUE) {
   i <- NULL
   t1 <- Sys.time()
-  if (verbose) dabiao("Checking group")
+
+  method <- match.arg(method, c("t.test", "wilcox.test", "kruskal.test", "anova", "pearson", "kendall", "spearman", "lm", "chisq.test", "none"))
+  if (!is.null(pattern)) {
+    if (!method %in% c("pearson", "kendall", "spearman")) {
+      stop("method should be one of \"pearson\", \"kendall\", \"spearman\" when you specify a pattern")
+    }
+  }
+
+  if (verbose) {
+    pcutils::dabiao("Checking group")
+  }
   if (!is.null(metadata)) {
-    if (length(group) != 1) stop("'group' should be one column name of metadata when metadata exsit!")
+    if (length(group) != 1) {
+      stop("'group' should be one column name of metadata when metadata exsit!")
+    }
     idx <- rownames(metadata) %in% colnames(df)
     metadata <- metadata[idx, , drop = FALSE]
     df <- df[, rownames(metadata), drop = FALSE]
-    if (verbose) message(nrow(metadata), " samples are matched for next step.")
-    if (length(idx) < 2) stop("too less common samples")
+    if (verbose) {
+      message(nrow(metadata), " samples are matched for next step.")
+    }
+    if (length(idx) < 2) {
+      stop("too less common samples")
+    }
     sampFile <- data.frame(group = metadata[, group], row.names = row.names(metadata))
   } else {
-    if (length(group) != ncol(df)) stop("'group' length should equal to columns number of df when metadata is NULL!")
+    if (length(group) != ncol(df)) {
+      stop("'group' length should equal to columns number of df when metadata is NULL!")
+    }
     sampFile <- data.frame(row.names = colnames(df), group = group)
   }
 
-  # df=df[rowSums(df)>0,]
-
-  vs_group <- levels(factor(sampFile$group))
-  if (length(vs_group) == 1) stop("'group' should be at least two elements factor")
-  if (length(vs_group) > 2) {
-    if (method %in% c("t.test", "wilcox.test")) stop("'group' more than two elements, try 'kruskal.test' or 'anova'")
+  if (method %in% c("chisq.test")) {
+    if (verbose) dabiao("Using chisq.test, transforming data to 0-1 table")
+    df <- trans(df, method = "pa")
   }
+
+  if (verbose) {
+    pcutils::dabiao("Removing all-zero rows: ", sum(rowSums(abs(df)) == 0))
+  }
+  df <- df[rowSums(abs(df)) > 0, ]
   # calculate each
-  tkodf <- t(df) %>% as.data.frame()
+  if (verbose) {
+    pcutils::dabiao("Calculating each feature")
+  }
+  if (verbose) {
+    pcutils::dabiao("Using method: ", method)
+  }
+  tkodf <- t(df) %>%
+    as.data.frame()
   group <- sampFile$group
-
-  res.dt <- data.frame("variable" = rownames(df))
-  if (verbose) dabiao("Calculating each variable")
-  if (verbose) dabiao("Using method: ", method)
-
-  for (i in vs_group) {
-    tmpdf <- data.frame(average = apply(df[, which(group == i)], 1, mean), sd = apply(df[, which(group == i)], 1, sd))
-    colnames(tmpdf) <- paste0(colnames(tmpdf), "_", i)
-    res.dt <- cbind(res.dt, tmpdf)
+  group2 <- NULL
+  if (method %in% c("pearson", "kendall", "spearman", "lm")) {
+    if (is.null(pattern)) {
+      if (verbose) {
+        message("Using correlation analysis: ", method, ", the groups will be transform to numeric, note the factor levels of group.")
+      }
+      if (is.numeric(group)) {
+        group2 <- group
+      } else {
+        group2 <- as.numeric(factor(group))
+      }
+    } else {
+      if (is.numeric(group)) {
+        # stop('Can not use 'pattern' when group is a numeric variable.')
+        if ((!is.numeric(pattern)) | length(group) != length(pattern)) {
+          stop("pattern should be a numeric vector whose length equal to the group, e.g. c(1,2,3,5,3)")
+        }
+      } else {
+        if ((!is.numeric(pattern)) | (is.null(names(pattern))) | (length(pattern) != nlevels(factor(group)))) {
+          stop("pattern should be a named numeric vector matching the group, e.g. c(\"G1\"=1.5,\"G2\"=0.5,\"G3\"=2)")
+        }
+        group2 <- pattern[group]
+      }
+      if (verbose) {
+        message("Using pattern")
+      }
+    }
   }
-  if (length(vs_group) == 2) {
-    res.dt$diff_mean <- res.dt[, paste0("average_", vs_group[1])] - res.dt[, paste0("average_", vs_group[2])]
-  }
-  high_group <- apply(res.dt[, paste0("average_", vs_group)], 1, function(a) which(a == max(a))[[1]])
-  res.dt$Highest <- vs_group[high_group]
 
+  res.dt <- data.frame(ID = rownames(df), row.names = rownames(df))
+
+  if (is.numeric(sampFile$group)) {
+    # stop('group should be a category variable.')
+    vs_group <- "Numeric variable"
+    if (!method %in% c("pearson", "kendall", "spearman", "lm")) {
+      stop("group is a numeric variable, try \"pearson\", \"kendall\", \"spearman\" method")
+      res.dt$cor <- cor(tkodf, group2, method = method)[, 1]
+    }
+  } else {
+    vs_group <- levels(factor(sampFile$group))
+    if (length(vs_group) == 1) {
+      stop("'group' should be at least two elements factor")
+    }
+    if (length(vs_group) > 2) {
+      if (method %in% c("t.test", "wilcox.test")) {
+        stop("group\" more than two elements, try \"kruskal.test\", \"anova\" or \"pearson\", \"kendall\", \"spearman\"")
+      }
+    }
+
+    for (i in vs_group) {
+      tmpdf <- data.frame(
+        average = apply(df[, which(group == i), drop = FALSE], 1, mean),
+        sd = apply(df[, which(group == i), drop = FALSE], 1, sd)
+      )
+      colnames(tmpdf) <- paste0(colnames(tmpdf), "_", i)
+      res.dt <- cbind(res.dt, tmpdf)
+    }
+    if (length(vs_group) == 2) {
+      # update, make sure the control group is first one.
+      res.dt$diff_mean <- res.dt[, paste0("average_", vs_group[2])] - res.dt[, paste0("average_", vs_group[1])]
+    }
+    high_group <- apply(res.dt[, paste0("average_", vs_group)], 1, function(a) which(a == max(a))[[1]])
+    res.dt$Highest <- vs_group[high_group]
+  }
+  if (method %in% c("pearson", "kendall", "spearman")) {
+    res.dt$cor <- cor(tkodf, group2, method = method)[, 1]
+  }
   # parallel
   reps <- nrow(df)
 
+  tkodf <- t(df)
   # main function
   loop <- function(i) {
     val <- tkodf[, i]
+    if (method == "none") {
+      return(NA)
+    }
     if (method == "wilcox.test") {
       pval <- stats::wilcox.test(val ~ group)$p.value
     }
     if (method == "t.test") {
-      pval <- stats::t.test(val ~ group)$p.value
+      if (sd(val) == 0) {
+        pval <- 1
+      } else {
+        pval <- stats::t.test(val ~ group)$p.value
+      }
+    }
+    if (method == "chisq.test") {
+      if (length(unique(val)) < 2) {
+        pval <- 1
+      } else {
+        pval <- stats::chisq.test(val, group)$p.value
+      }
     }
     if (method == "kruskal.test") {
       pval <- stats::kruskal.test(val ~ group)$p.value
@@ -641,13 +793,32 @@ group_test <- function(df, group, metadata = NULL, method = "wilcox.test",
         .$`Pr(>F)` %>%
         .[1]
     }
-    if (verbose & (i %% 100 == 0)) message(i, " done.")
+    if (method == "lm") {
+      # pval <- stats::lm(val~group) %>% stats::anova(.) %>%.$`Pr(>F)` %>% .[1]
+      lm_res <- stats::lm(val ~ group)
+      lm_res_summ <- summary(lm_res)
+      lm_res_anova <- stats::anova(lm_res)
+      r2 <- lm_res_summ %>%
+        .$adj.r.squared %>%
+        .[1]
+      pval <- c(lm_res$coefficients[2], r2, as.numeric(lm_res_anova[1, ]))
+    }
+    if (method %in% c("pearson", "kendall", "spearman")) {
+      # 用p-value还是直接效应量呢？?  Pval <- 1-abs(stats::cor(val,group2,method = method))
+      pval <- stats::cor.test(val, group2, method = method)$p.value
+    }
+    if (verbose & (i %% 1000 == 0)) {
+      message(i, " features done.")
+    }
+    if (is.na(pval)) {
+      pval <- 1
+    }
     pval
   }
 
   {
     if (threads > 1) {
-      lib_ps("foreach", "doSNOW", "snow", library = FALSE)
+      pcutils::lib_ps("foreach", "doSNOW", "snow", library = FALSE)
       if (verbose) {
         pb <- utils::txtProgressBar(max = reps, style = 3)
         opts <- list(progress = function(n) utils::setTxtProgressBar(pb, n))
@@ -658,31 +829,42 @@ group_test <- function(df, group, metadata = NULL, method = "wilcox.test",
       doSNOW::registerDoSNOW(cl)
       res <- foreach::`%dopar%`(
         foreach::foreach(
-          i = 1:reps,
-          .options.snow = opts, .export = c("group")
+          i = seq_len(reps), .options.snow = opts,
+          .export = c("group", "group2")
         ),
-        loop(i)
+        suppressWarnings(loop(i))
       )
       snow::stopCluster(cl)
       gc()
     } else {
-      res <- lapply(1:reps, loop)
+      res <- suppressWarnings(lapply(seq_len(reps), loop))
     }
   }
   # simplify method
-  res <- do.call(c, res)
-  res.dt$p.value <- res
+  if (method == "lm") {
+    res <- do.call(rbind, res)
+    colnames(res) <- c("b-coefficient", "adj-r2", "df", "sum_sq", "mean_sq", "F-value", "p.value")
+    res.dt <- cbind(res.dt, res)
+  } else {
+    res <- do.call(c, res)
+    res.dt$p.value <- res
+  }
 
   t2 <- Sys.time()
   stime <- sprintf("%.3f", t2 - t1)
-  resinfo <- paste0(
-    "Compared groups: ", paste(vs_group, collapse = " and "), "\n",
-    "Total variable number: ", reps, "\n",
-    "Time use: ", stime, attr(stime, "units"), "\n"
-  )
 
-  if (verbose) message(resinfo)
   res.dt$p.adjust <- stats::p.adjust(res.dt$p.value, method = p.adjust.method)
+
+  resinfo <- paste0(
+    "\nCompared groups: ", paste(vs_group, collapse = ", "), "\n", "Total KO number: ", reps, "\n", "Compare method: ", method, "\n", "Time use: ",
+    stime, attr(stime, "units"), "\n"
+  )
+  if (verbose) message(resinfo)
+
+  attributes(res.dt)$vs_group <- vs_group
+  attributes(res.dt)$method <- method
+  attributes(res.dt)$p.adjust.method <- p.adjust.method
+  attributes(res.dt)$pattern <- pattern
   return(res.dt)
 }
 

@@ -195,10 +195,11 @@ get_cols <- function(n = 11, pal = NULL, n_break = 5) {
   )
 
   bluered <- rev(RColorBrewer::brewer.pal(11, "RdBu"))
+  bluered2 <- c("#182F8B", "#4B6DCC", "#82A9E8", "#BAD1F1", "#E6F0FF", "#F9DCE6", "#F6A6C0", "#E36B8F", "#BF3F66", "#9B123C")
 
   if (is.null(pal)) pal <- "col1"
   if (length(pal) == 1) {
-    if (pal %in% c("col1", "col2", "col3", "bluered")) {
+    if (pal %in% c("col1", "col2", "col3", "bluered", "bluered2")) {
       pal <- get(pal)
     }
   }
@@ -440,7 +441,7 @@ match_df <- function(otutab, metadata) {
 ggplot_translator <- function(gg, which = c("x", "y"), from = "en", to = "zh",
                               keep_original_label = FALSE, original_sep = "\n", verbose = TRUE) {
   if (verbose) {
-    message("Please set the font family to make the labels display well.\n see `how_to_set_font_for_plot()`.")
+    message("Tips: Please set the font family to make the labels display well.\n see `how_to_set_font_for_plot()`.")
     lib_ps("sysfonts", "showtext", library = FALSE)
     showtext::showtext_auto()
   }
@@ -521,6 +522,56 @@ ggplot_translator <- function(gg, which = c("x", "y"), from = "en", to = "zh",
   return(gg)
 }
 
+#' Translate text of igraph
+#'
+#' @param ig igraph object to be translated
+#' @param from source language
+#' @param to target language
+#' @param which vertex, edge, or all
+#' @param verbose verbose
+#'
+#' @return igraph object
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' library(igraph)
+#' ig <- make_graph(c("happy", "sad", "sad", "angry", "sad", "worried"))
+#' plot(ig)
+#' ig2 <- igraph_translator(ig)
+#' font_file <- "/System/Library/Fonts/Supplemental/Songti.ttc"
+#' sysfonts::font_add("Songti", font_file)
+#' plot(ig2, vertex.label.family = "Songti")
+#' }
+igraph_translator <- function(ig, from = "en", to = "zh", which = c("vertex", "edge", "all")[1],
+                              verbose = TRUE) {
+  lib_ps("igraph", library = FALSE)
+  stopifnot(inherits(ig, "igraph"))
+  if (verbose) {
+    message('Tips: Please set the font family to make the labels display well.e.g:
+    ig <- igraph_translator(ig)
+    font_file <- "/System/Library/Fonts/Supplemental/Songti.ttc"
+    sysfonts::font_add("Songti", font_file)
+    plot(ig, vertex.label.family="Songti")
+            ')
+    lib_ps("sysfonts", "showtext", library = FALSE)
+    showtext::showtext_auto()
+  }
+  if ("all" %in% which) which <- c("vertex", "edge")
+  if ("vertex" %in% which) {
+    if (is.null(igraph::V(ig)$label)) {
+      if (is.null(igraph::V(ig)$name)) stop("No vertex label found")
+      igraph::V(ig)$label <- igraph::V(ig)$name
+    }
+    igraph::V(ig)$label <- translator(igraph::V(ig)$label, from = from, to = to)
+  }
+  if ("edge" %in% which) {
+    if (is.null(igraph::E(ig)$label)) stop("No edge label found")
+    igraph::E(ig)$label <- translator(igraph::E(ig)$label, from = from, to = to)
+  }
+  ig
+}
+
 # ========Common plots=======
 
 #' Plot a general venn (upset, flower)
@@ -535,6 +586,7 @@ ggplot_translator <- function(gg, which = c("x", "y"), from = "en", to = "zh",
 #' if (interactive()) {
 #'   aa <- list(a = 1:3, b = 3:7, c = 2:4)
 #'   venn(aa, mode = "venn")
+#'   venn(aa, mode = "euler")
 #'   venn(aa, mode = "network")
 #'   venn(aa, mode = "upset")
 #'   data(otutab)
@@ -554,11 +606,27 @@ venn_cal <- function(otu_time) {
   return(aa)
 }
 
+venn_cal2 <- function(my_list) {
+  # 获取所有唯一的行名
+  all_elements <- unique(unlist(my_list))
+
+  # 创建一个逻辑矩阵，行名为all_elements，列名为列表的名字
+  result_matrix <- matrix(FALSE,
+    nrow = length(all_elements), ncol = length(my_list),
+    dimnames = list(all_elements, names(my_list))
+  )
+  # 填充矩阵
+  for (name in names(my_list)) {
+    result_matrix[as.character(my_list[[name]]), name] <- TRUE
+  }
+  data.frame(result_matrix, check.names = FALSE)
+}
+
 #' @method venn list
 #' @rdname venn
 #'
 #' @param aa list
-#' @param mode "venn","venn2","upset","flower","network"
+#' @param mode "venn", "venn2", "euler", "upset", "flower", "network"
 #' @param elements_label logical, show elements label in network?
 #' @param ... add
 #'
@@ -593,6 +661,12 @@ venn.list <- function(aa, mode = "venn", elements_label = TRUE, ...) {
   #   # plot(aap, doWeights = FALSE,type="ChowRuskey")
   # }
 
+  if (mode == "euler") {
+    lib_ps("eulerr", library = FALSE)
+    venn_cal2(aa) -> aa_df
+    fit <- eulerr::euler(aa_df, shape = "ellipse")
+    do.call(plot, update_param(list(x = fit, quantities = TRUE), list(...))) %>% print()
+  }
   if (mode == "upset") {
     lib_ps("UpSetR", library = FALSE)
     UpSetR::upset(UpSetR::fromList(aa), order.by = "freq", nsets = length(aa), nintersects = 30, ...) -> p
@@ -710,9 +784,7 @@ venn_flower <- function(aa) {
 
 
 #' @param otutab table
-#' @param mode "venn","venn2","upset","flower"
-#' @param elements_label logical, show elements label in network?
-#' @param ... add
+#'
 #' @return a plot
 #' @method venn data.frame
 #' @rdname venn
@@ -1164,17 +1236,17 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
       do.call(geom_dotplot, update_param(list(binaxis = "y", stackdir = "center", position = "dodge"), point_param)) +
       # 添加误差线
-      stat_summary(fun.data = "mean_sdl", fun.args = list(mult = 1), geom = "pointrange", color = "black", size = 1.2) + # 添加均值散点
-      stat_summary(fun = "mean", fun.args = list(mult = 1), geom = "point", color = "white", size = 4)
+      stat_summary(fun.data = "mean_sdl", fun.args = list(mult = 1), geom = "pointrange", color = "black", size = 1.2, show.legend = FALSE) + # 添加均值散点
+      stat_summary(fun = "mean", fun.args = list(mult = 1), geom = "point", color = "white", size = 4, show.legend = FALSE)
   }
   if (mode == 6) {
     lib_ps("ggbeeswarm", library = FALSE)
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
       do.call(ggbeeswarm::geom_quasirandom, update_param(list(width = 0.5, alpha = 0.8, size = 2, shape = 21), point_param)) +
       # 添加误差线
-      stat_summary(fun.data = "mean_sdl", fun.args = list(mult = 1), geom = "pointrange", color = "black", size = 1.2) +
+      stat_summary(fun.data = "mean_sdl", fun.args = list(mult = 1), geom = "pointrange", color = "black", size = 1.2, show.legend = FALSE) +
       # 添加均值散点
-      stat_summary(fun = "mean", fun.args = list(mult = 1), geom = "point", color = "white", size = 4)
+      stat_summary(fun = "mean", fun.args = list(mult = 1), geom = "point", color = "white", size = 4, show.legend = FALSE)
   }
   if (mode == 7) {
     p <- ggplot(md, aes(x = group, y = value, fill = group, group = group)) +
@@ -1664,6 +1736,7 @@ gghist <- function(x, text_pos = c(0.8, 0.8), ...) {
 #' @param ... parameters parse to \code{\link[ggplot2]{geom_point}}
 #' @param facet whether facet?
 #' @param smooth_param parameters parse to \code{\link[ggplot2]{geom_smooth}}
+#' @param formula_size formula font size, default is 2.5
 #'
 #' @return a ggplot
 #' @export
@@ -1675,7 +1748,7 @@ gghist <- function(x, text_pos = c(0.8, 0.8), ...) {
 #'   my_lm(c(1:50) + runif(50, 0, 5), var = 1:50)
 #' }
 #' }
-my_lm <- function(tab, var, metadata = NULL, smooth_param = list(), facet = TRUE, ...) {
+my_lm <- function(tab, var, metadata = NULL, smooth_param = list(), facet = TRUE, formula_size = 2.5, ...) {
   lib_ps("ggpmisc", library = FALSE)
   # data transform
   g_name <- NULL
@@ -1709,7 +1782,7 @@ my_lm <- function(tab, var, metadata = NULL, smooth_param = list(), facet = TRUE
         sep = "~~~~~"
       )),
       formula = y ~ x, parse = TRUE, color = ifelse(is.null(smooth_param$color), "red", smooth_param$color),
-      size = 2.5, # Formula font size
+      size = formula_size, # Formula font size
       label.x = 0.05, label.y = 1.05
     )
 
@@ -1730,7 +1803,7 @@ my_lm <- function(tab, var, metadata = NULL, smooth_param = list(), facet = TRUE
             sep = "~~~~~"
           )),
           formula = y ~ x, parse = TRUE,
-          size = 2.5, # Formula font size
+          size = formula_size, # Formula font size
           label.x = 0.05, label.y = seq(1, (1.05 - 0.05 * ncol(tab)), -0.05)
         )
     }

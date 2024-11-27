@@ -36,6 +36,7 @@ print_authors_affiliation <- function(authors = c("jc", "pc")) {
     lz = 1:2,
     jlyq = 1:2,
     hzn = 1:2,
+    wx = 1:2,
     cq = 1:2,
     tsj = 4:5,
     sxt = 6
@@ -417,12 +418,29 @@ gsub.data.frame <- function(pattern, replacement, x, ...) {
   data.frame(y, check.names = FALSE)
 }
 
+#' Trans list (with NULL) to data.frame
+#'
+#' @param lst list (with NULL)
+#'
+#' @return a data.frame
+#' @export
+#'
+list_to_dataframe <- function(lst) {
+  # 提取每个列表元素并转换为数据框行
+  df <- do.call(rbind, lapply(lst, function(x) {
+    # 将 NULL 转换为 NA
+    x[vapply(x, is.null, logical(length = 1L))] <- NA
+    as.data.frame(x, stringsAsFactors = FALSE)
+  }))
+  return(df)
+}
+
 # =======Read file========
 
 #' Read some special format file
 #'
 #' @param file file path
-#' @param format "blast", "diamond", "fa", "fasta", "fna", "gff", "gtf","jpg", "png", "pdf", "svg"...
+#' @param format "blast", "diamond", "fa", "fasta", "fna", "faa", "bib", "gff", "gtf","jpg", "png", "pdf", "svg"...
 #' @param just_print just print the file
 #' @param all_yes all_yes?
 #' @param ... additional arguments
@@ -452,7 +470,9 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, 
   } else {
     if (is.null(format)) format <- tools::file_ext(file)
     format <- match.arg(format, c(
-      "blast", "diamond", "fa", "fasta", "fna", "gff", "gtf",
+      "blast", "diamond", "gff", "gtf", "bed",
+      "fa", "fasta", "fna", "faa",
+      "bib", "ris",
       "jpg", "png", "pdf", "svg", "gif", "biom"
     ))
 
@@ -470,8 +490,23 @@ read.file <- function(file, format = NULL, just_print = FALSE, all_yes = FALSE, 
       return(df)
     }
 
-    if (format %in% c("fa", "fasta", "fna")) {
+    if (format %in% c("bed")) {
+      utils::read.table(file, header = FALSE, sep = "\t", stringsAsFactors = FALSE) -> df
+      colnames(df) <- c(
+        "chrom", "chromStart", "chromEnd", "name", "score", "strand", "thickStart",
+        "thickEnd", "itemRgb", "blockCount", "blockSizes", "blockStarts"
+      )[seq_len(ncol(df))]
+      return(df)
+    }
+
+    if (format %in% c("fa", "fasta", "fna", "faa")) {
       df <- read_fasta(file)
+      return(df)
+    }
+
+    if (format %in% c("bib", "ris")) {
+      lib_ps("revtools", library = FALSE)
+      df <- revtools::read_bibliography(filename = file, return_df = TRUE)
       return(df)
     }
 
@@ -652,10 +687,11 @@ trans_format <- function(file, to_format, format = NULL, ..., browser = "/Applic
 #' @param timeout timeout, 300s
 #' @param force FALSE, if TRUE, overwrite existed file
 #' @param ... add
+#' @param proxy use proxy, default is FALSE
 #'
 #' @return No value
 #' @export
-download2 <- function(url, file_path, timeout = 300, force = FALSE, ...) {
+download2 <- function(url, file_path, timeout = 300, force = FALSE, proxy = FALSE, ...) {
   if (file.exists(file_path) & !force) {
     return(invisible())
   } else {
@@ -664,6 +700,12 @@ download2 <- function(url, file_path, timeout = 300, force = FALSE, ...) {
 
     if (!dir.exists(dirname(file_path))) dir.create(dirname(file_path), recursive = TRUE)
     options(timeout = timeout)
+
+    if (proxy) {
+      lib_ps("r.proxy", library = FALSE)
+      r.proxy::proxy()
+    }
+
     # Download the file
     tryCatch(
       expr = {

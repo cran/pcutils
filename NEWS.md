@@ -1,3 +1,14 @@
+# pcutils v0.2.7 Notes
+
+## Added
+
+- added `list_to_dataframe` function <2024-11-19, Tue>
+- added `hebing2` function <2024-10-23, Wed>
+- added `make_py_pkg` function <2024-10-22, Tue>
+- added `distance2df` function <2024-10-22, Tue>
+- added `euler` plot for venn <2024-07-20, Sat>
+- added `igraph_translator` function <2024-07-11, Thu>
+
 # pcutils v0.2.6 Notes
 
 ## Added
