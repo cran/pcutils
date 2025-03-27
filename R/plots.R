@@ -289,6 +289,48 @@ add_theme <- function(set_theme = NULL) {
   mytheme <<- mytheme
 }
 
+#' Get a legend from a ggplot object
+#'
+#' @param plot a ggplot object
+#' @param legend NULL, or position ("top")
+#'
+#' @return a grob object, or NULL if no legend found
+#' @export
+#'
+#' @examples
+#' library(ggplot2)
+#' p <- ggplot(mtcars, aes(wt, mpg, color = mpg)) +
+#'   geom_point()
+#' legend <- get_legend2(p)
+#' plot(legend)
+get_legend2 <- function(plot, legend = NULL) {
+  if (ggplot2::is.ggplot(plot)) {
+    gt <- ggplot2::ggplotGrob(plot)
+  } else {
+    if (grid::is.grob(plot)) {
+      gt <- plot
+    } else {
+      stop("Plot object is neither a `ggplot` nor a `grob`.")
+    }
+  }
+  pattern <- "guide-box"
+  if (!is.null(legend)) {
+    pattern <- paste0(pattern, "-", legend)
+  }
+  indices <- grep(pattern, gt$layout$name)
+  not_empty <- !vapply(
+    gt$grobs[indices],
+    inherits,
+    what = "zeroGrob",
+    FUN.VALUE = logical(1)
+  )
+  indices <- indices[not_empty]
+  if (length(indices) > 0) {
+    return(gt$grobs[[indices[1]]])
+  }
+  return(NULL)
+}
+
 #' Scale a legend size
 #'
 #' @param scale default: 1.
@@ -843,7 +885,7 @@ pre_stack_data <- function(otutab, metadata = NULL, group = "Group",
     data_all <- data_all %>%
       dplyr::group_by(variable, Taxonomy) %>%
       dplyr::summarise(n = sum(value)) %>%
-      dplyr::mutate(value = n / sum(n))
+      dplyr::mutate(value = n / sum(n) * 100)
   }
 
   if (style == "sample") {
@@ -1017,7 +1059,7 @@ stackplot <- function(otutab, metadata = NULL, group = "Group", get_data = FALSE
     }
   }
   if (relative) {
-    p <- p + scale_y_continuous(labels = scales::percent) + ylab("Relative Abundance (%)")
+    p <- p + ylab("Relative Abundance (%)")
   } else {
     p <- p + ylab("Number")
   }
@@ -1106,7 +1148,7 @@ areaplot <- function(otutab, metadata = NULL, group = "Group", get_data = FALSE,
   p <- p + scale_x_continuous(breaks = 1:nlevels(data_all$variable), labels = levels(data_all$variable))
 
   if (relative) {
-    p <- p + scale_y_continuous(labels = scales::percent) + ylab("Relative Abundance (%)")
+    p <- p + ylab("Relative Abundance (%)")
   } else {
     p <- p + ylab("Number")
   }
@@ -1353,6 +1395,10 @@ group_box <- function(tab, group = NULL, metadata = NULL, mode = 1,
     ), stat_compare_means_param))
   }
 
+  if (any(grepl("-", unique(md$group)))) {
+    warning("'-' can not be in the colnames! skip `alpha` marks.")
+    alpha <- FALSE
+  }
   if (alpha) {
     a <- list()
     for (i in colnames(tab)) {
@@ -1503,21 +1549,27 @@ gghuan <- function(tab, reorder = TRUE, mode = "1", topN = 5, name = TRUE, perce
 #' @param circle_width the center circle width
 #' @param circle_label the center circle label
 #' @param circle_label_params parameters parse to \code{\link[ggplot2]{geom_text}}
+#' @param pal color palette
 #'
 #' @import ggplot2 dplyr
 #' @return a ggplot
 #' @export
 #'
 #' @examples
-#' data.frame(
-#'   a = c("a", "a", "b", "b", "c"), b = c("a", LETTERS[2:5]), c = rep("a", 5),
-#'   number = 1:5
-#' ) %>% gghuan2()
-gghuan2 <- function(tab = NULL, huan_width = 1, circle_width = 1, space_width = 0.2, circle_label = NULL,
+#' \donttest{
+#' if (interactive()) {
+#'   data.frame(
+#'     a = c("a", "a", "b", "b", "c"), b = c("a", LETTERS[2:5]), c = rep("a", 5),
+#'     number = 1:5
+#'   ) %>% gghuan2()
+#' }
+#' }
+gghuan2 <- function(tab = NULL, huan_width = 1, circle_width = 1, space_width = 0.2, circle_label = NULL, pal = NULL,
                     name = TRUE, percentage = FALSE, text_params = NULL, circle_label_params = NULL, bar_params = NULL) {
+  lib_ps("ggnewscale", library = FALSE)
   if (!is.numeric(tab[, ncol(tab)])) stop("the last column must be numeric")
   if ((space_width < 0) | space_width >= 1) stop("space_width should be [0,1)")
-  type <- ymax <- ymin <- xmin <- xmax <- lab <- fraction <- NULL
+  type <- ymax <- ymin <- xmin <- xmax <- lab <- fraction <- level <- NULL
 
   huan_widths <- c(circle_width, rep(huan_width, length = ncol(tab) - 1))
   plot_df_res <- data.frame()
@@ -1526,6 +1578,7 @@ gghuan2 <- function(tab = NULL, huan_width = 1, circle_width = 1, space_width = 
     colnames(plot_df) <- c("type", "n")
     count2(plot_df) -> plot_df
     dplyr::mutate(plot_df, fraction = n / sum(n)) -> plot_df
+    plot_df$level <- colnames(tab)[i]
     plot_df$ymax <- cumsum(plot_df$fraction)
     plot_df$ymin <- c(0, head(plot_df$ymax, n = -1))
     plot_df$xmax <- sum(huan_widths[seq_len(i + 1)])
@@ -1543,11 +1596,27 @@ gghuan2 <- function(tab = NULL, huan_width = 1, circle_width = 1, space_width = 
     plot_df_res <- rbind(plot_df_res, plot_df)
   }
 
-  ggplot(data = plot_df_res, aes(fill = type, ymax = ymax, ymin = ymin, xmax = xmax, xmin = xmin)) +
-    do.call(geom_rect, update_param(list(alpha = 0.8), bar_params)) +
+  if (is.null(pal)) pal <- get_cols(unique(plot_df_res$type))
+
+  p <- ggplot()
+
+  for (i in colnames(tab)[seq_len(ncol(tab) - 1)]) {
+    p <- p + do.call(
+      geom_rect,
+      update_param(list(
+        data = filter(plot_df_res, level == i),
+        mapping = aes(fill = type, ymax = ymax, ymin = ymin, xmax = xmax, xmin = xmin)
+      ), bar_params)
+    ) +
+      scale_fill_manual(values = pal, name = i) +
+      ggnewscale::new_scale_fill()
+  }
+
+  p +
     xlim(c(0, sum(huan_widths) + 1)) +
     coord_polar(theta = "y") +
     do.call(geom_text, update_param(list(
+      data = plot_df_res,
       mapping = aes(x = ((xmin + xmax) / 2) + 1, y = ((ymin + ymax) / 2), label = lab),
       size = 3, nudge_x = -1
     ), text_params)) +

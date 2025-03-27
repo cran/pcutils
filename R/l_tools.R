@@ -435,6 +435,58 @@ list_to_dataframe <- function(lst) {
   return(df)
 }
 
+#' Check if a directory structure matches the expected structure
+#'
+#' This function compares the actual directory structure with a predefined expected structure
+#' and returns `TRUE` if they match, otherwise `FALSE`. If `verbose` is `TRUE`, it prints
+#' detailed information about missing or extra files/directories.
+#'
+#' @param root_path A character string specifying the root directory to check.
+#' @param expected_structure A character vector specifying the expected directory structure.
+#'                           Each element should be a relative path (e.g., "data/raw").
+#' @param verbose A logical value. If `TRUE`, prints detailed information; if `FALSE`, suppresses output.
+#' @param only_missing Only check the missing files/directories.
+#'
+#' @return A logical value: `TRUE` if the directory structure matches the expected structure,
+#'         otherwise `FALSE`.
+#'
+#' @export
+check_directory_structure <- function(root_path, expected_structure, only_missing = TRUE, verbose = FALSE) {
+  # Get the actual directory structure
+  actual_structure <- c(
+    list.files(path = root_path, recursive = TRUE, full.names = FALSE),
+    list.dirs(path = root_path, recursive = TRUE, full.names = FALSE)
+  )
+
+  # Check for missing files/directories
+  missing_files <- setdiff(expected_structure, actual_structure)
+  if (length(missing_files) > 0) {
+    if (verbose) {
+      cat("The following files or directories are missing:\n")
+      print(missing_files)
+    }
+    return(FALSE)
+  }
+
+  if (!only_missing) {
+    # Check for extra files/directories
+    extra_files <- setdiff(actual_structure, expected_structure)
+    if (length(extra_files) > 0) {
+      if (verbose) {
+        cat("The following files or directories are extra:\n")
+        print(extra_files)
+      }
+      return(FALSE)
+    }
+  }
+
+  # If no issues, return TRUE
+  if (verbose) {
+    cat("The directory structure matches the expected structure.\n")
+  }
+  return(TRUE)
+}
+
 # =======Read file========
 
 #' Read some special format file

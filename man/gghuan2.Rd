@@ -10,6 +10,7 @@ gghuan2(
   circle_width = 1,
   space_width = 0.2,
   circle_label = NULL,
+  pal = NULL,
   name = TRUE,
   percentage = FALSE,
   text_params = NULL,
@@ -28,6 +29,8 @@ gghuan2(
 
 \item{circle_label}{the center circle label}
 
+\item{pal}{color palette}
+
 \item{name}{label the name}
 
 \item{percentage}{label the percentage}
@@ -45,8 +48,12 @@ a ggplot
 gghuan2 for multi-doughnut chart
 }
 \examples{
-data.frame(
-  a = c("a", "a", "b", "b", "c"), b = c("a", LETTERS[2:5]), c = rep("a", 5),
-  number = 1:5
-) \%>\% gghuan2()
+\donttest{
+if (interactive()) {
+  data.frame(
+    a = c("a", "a", "b", "b", "c"), b = c("a", LETTERS[2:5]), c = rep("a", 5),
+    number = 1:5
+  ) \%>\% gghuan2()
+}
+}
 }
